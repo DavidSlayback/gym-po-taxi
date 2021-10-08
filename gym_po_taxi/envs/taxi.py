@@ -1,187 +1,331 @@
-import numpy as np
-import gym
+__all__ = ['TaxiEnv', 'TaxiVecEnv', 'HansenTaxiVecEnv']
+
+import sys
+from contextlib import closing
+from io import StringIO
+from gym import utils, Env
+from gym.utils.seeding import np_random
+from gym.spaces import Discrete
 from gym.vector.utils import batch_space
-from utils import *
-from collections import deque
+from gym.envs.toy_text import discrete
+import numpy as np
+
+# Base map for Taxi
+MAP = [
+    "+---------+",
+    "|R: | : :G|",
+    "| : | : : |",
+    "| : : : : |",
+    "| | : | : |",
+    "|Y| : |B: |",
+    "+---------+",
+]
+
+class TaxiEnv(discrete.DiscreteEnv):
+    """
+    The Taxi Problem
+    from "Hierarchical Reinforcement Learning with the MAXQ Value Function Decomposition"
+    by Tom Dietterich
+    Description:
+    There are four designated locations in the grid world indicated by R(ed), G(reen), Y(ellow), and B(lue). When the episode starts, the taxi starts off at a random square and the passenger is at a random location. The taxi drives to the passenger's location, picks up the passenger, drives to the passenger's destination (another one of the four specified locations), and then drops off the passenger. Once the passenger is dropped off, the episode ends.
+    Observations:
+    There are 500 discrete states since there are 25 taxi positions, 5 possible locations of the passenger (including the case when the passenger is in the taxi), and 4 destination locations.
+    Note that there are 400 states that can actually be reached during an episode. The missing states correspond to situations in which the passenger is at the same location as their destination, as this typically signals the end of an episode.
+    Four additional states can be observed right after a successful episodes, when both the passenger and the taxi are at the destination.
+    This gives a total of 404 reachable discrete states.
+    Passenger locations:
+    - 0: R(ed)
+    - 1: G(reen)
+    - 2: Y(ellow)
+    - 3: B(lue)
+    - 4: in taxi
+    Destinations:
+    - 0: R(ed)
+    - 1: G(reen)
+    - 2: Y(ellow)
+    - 3: B(lue)
+    Actions:
+    There are 6 discrete deterministic actions:
+    - 0: move south
+    - 1: move north
+    - 2: move east
+    - 3: move west
+    - 4: pickup passenger
+    - 5: drop off passenger
+    Rewards:
+    There is a default per-step reward of -1,
+    except for delivering the passenger, which is +20,
+    or executing "pickup" and "drop-off" actions illegally, which is -10.
+    Rendering:
+    - blue: passenger
+    - magenta: destination
+    - yellow: empty taxi
+    - green: full taxi
+    - other letters (R, G, Y and B): locations for passengers and destinations
+    state space is represented by:
+        (taxi_row, taxi_col, passenger_location, destination)
+    """
+
+    metadata = {"render.modes": ["human", "ansi"]}
+
+    def __init__(self):
+        self.desc = np.asarray(MAP, dtype="c")
+
+        self.locs = locs = [(0, 0), (0, 4), (4, 0), (4, 3)]
+
+        num_states = 500
+        num_rows = 5
+        num_columns = 5
+        max_row = num_rows - 1
+        max_col = num_columns - 1
+        initial_state_distrib = np.zeros(num_states)
+        num_actions = 6
+        P = {
+            state: {action: [] for action in range(num_actions)}
+            for state in range(num_states)
+        }
+        for row in range(num_rows):
+            for col in range(num_columns):
+                for pass_idx in range(len(locs) + 1):  # +1 for being inside taxi
+                    for dest_idx in range(len(locs)):
+                        state = self.encode(row, col, pass_idx, dest_idx)
+                        if pass_idx < 4 and pass_idx != dest_idx:
+                            initial_state_distrib[state] += 1
+                        for action in range(num_actions):
+                            # defaults
+                            new_row, new_col, new_pass_idx = row, col, pass_idx
+                            reward = (
+                                -1
+                            )  # default reward when there is no pickup/dropoff
+                            done = False
+                            taxi_loc = (row, col)
+
+                            if action == 0:
+                                new_row = min(row + 1, max_row)
+                            elif action == 1:
+                                new_row = max(row - 1, 0)
+                            if action == 2 and self.desc[1 + row, 2 * col + 2] == b":":
+                                new_col = min(col + 1, max_col)
+                            elif action == 3 and self.desc[1 + row, 2 * col] == b":":
+                                new_col = max(col - 1, 0)
+                            elif action == 4:  # pickup
+                                if pass_idx < 4 and taxi_loc == locs[pass_idx]:
+                                    new_pass_idx = 4
+                                else:  # passenger not at location
+                                    reward = -10
+                            elif action == 5:  # dropoff
+                                if (taxi_loc == locs[dest_idx]) and pass_idx == 4:
+                                    new_pass_idx = dest_idx
+                                    done = True
+                                    reward = 20
+                                elif (taxi_loc in locs) and pass_idx == 4:
+                                    new_pass_idx = locs.index(taxi_loc)
+                                else:  # dropoff at wrong location
+                                    reward = -10
+                            new_state = self.encode(
+                                new_row, new_col, new_pass_idx, dest_idx
+                            )
+                            P[state][action].append((1.0, new_state, reward, done))
+        initial_state_distrib /= initial_state_distrib.sum()
+        discrete.DiscreteEnv.__init__(
+            self, num_states, num_actions, P, initial_state_distrib
+        )
+
+    def encode(self, taxi_row, taxi_col, pass_loc, dest_idx):
+        # (5) 5, 5, 4
+        i = taxi_row
+        i *= 5  # times y
+        i += taxi_col
+        i *= 5  # times number dest + 1
+        i += pass_loc
+        i *= 4  # times number dest
+        i += dest_idx
+        return i
+
+    def decode(self, i):
+        out = []
+        out.append(i % 4)
+        i = i // 4
+        out.append(i % 5)
+        i = i // 5
+        out.append(i % 5)
+        i = i // 5
+        out.append(i)
+        assert 0 <= i < 5
+        return reversed(out)
+
+    def render(self, mode="human"):
+        outfile = StringIO() if mode == "ansi" else sys.stdout
+
+        out = self.desc.copy().tolist()
+        out = [[c.decode("utf-8") for c in line] for line in out]
+        taxi_row, taxi_col, pass_idx, dest_idx = self.decode(self.s)
+
+        def ul(x):
+            return "_" if x == " " else x
+
+        if pass_idx < 4:
+            out[1 + taxi_row][2 * taxi_col + 1] = utils.colorize(
+                out[1 + taxi_row][2 * taxi_col + 1], "yellow", highlight=True
+            )
+            pi, pj = self.locs[pass_idx]
+            out[1 + pi][2 * pj + 1] = utils.colorize(
+                out[1 + pi][2 * pj + 1], "blue", bold=True
+            )
+        else:  # passenger in taxi
+            out[1 + taxi_row][2 * taxi_col + 1] = utils.colorize(
+                ul(out[1 + taxi_row][2 * taxi_col + 1]), "green", highlight=True
+            )
+
+        di, dj = self.locs[dest_idx]
+        out[1 + di][2 * dj + 1] = utils.colorize(out[1 + di][2 * dj + 1], "magenta")
+        outfile.write("\n".join(["".join(row) for row in out]) + "\n")
+        if self.lastaction is not None:
+            outfile.write(
+                "  ({})\n".format(
+                    ["South", "North", "East", "West", "Pickup", "Dropoff"][
+                        self.lastaction
+                    ]
+                )
+            )
+        else:
+            outfile.write("\n")
+
+        # No need to return anything for human
+        if mode != "human":
+            with closing(outfile):
+                return outfile.getvalue()
 
 
-class TaxiBase(gym.Env):
-    """Base for all taxi environments"""
-    metadata = {'render.modes': ['human']}
-    # grid = TAXI_ROOMS_LAYOUT
-    grid_flat = TAXI_ROOMS_LAYOUT.ravel()  # Flattened grid
-    spawns = np.where(grid_flat > 1)[0]  # Passenger/goal spawn locations. Must be different
-    taxi_spawns = np.flatnonzero(grid_flat)  # Taxi spawn locations. Can spawn at goal/passenger
-    shape = BASE_SHAPE
+ns, x, y, locs, na = 500, 5, 5, 4, 5
+ACTIONS = np.array([
+    (1, 0),
+    (-1, 0),
+    (0, 1),
+    (0, -1),
+    (0, 0)
+])
 
-    def __init__(self, num_envs: int = 128, observability: str = 'loc', time_limit: int = 100,
-                 reward_wrong_movement: float = -0.1,
-                 gamma: float = 0.95, seed=None):
+# actions expressed as flat indices
+FLAT_ACTIONS = np.ravel_multi_index((ACTIONS+1).T, (x,y)) - np.ravel_multi_index((1,1), (x,y))
+
+
+def encode(r, c, p, d):
+    """row, col, pass_idx, dest_idx -> discrete"""
+    return ((r * y + c) * (locs+1) + p) * locs + d
+
+
+def decode(i):
+    """Discrete state -> row, col, pass_idx, dest_idx"""
+    d = i % locs
+    i //= locs
+    p = i % 5
+    i //= y
+    c = i % 5
+    r = i // x
+    return r, c, p, d
+
+# Initial state distribution
+STATE_DISTRIBUTION = np.zeros(ns)
+VALID_STATES = np.array([encode(r, c, p, d) for r in range(y) for c in range(x) for p in range(locs) for d in range(locs) if d != p])
+STATE_DISTRIBUTION[VALID_STATES] += 1
+STATE_DISTRIBUTION /= STATE_DISTRIBUTION.sum()
+
+class TaxiVecEnv(Env):
+    """Vectorized original taxi environment"""
+    desc = np.asarray(MAP, dtype='c')
+    locs = np.array([(0, 0), (0, 4), (4, 0), (4, 3), (-1, -1)])  # R, G, Y, B, invalid
+    # Scale rewards down by factor of 10
+    BAD_MOVE = -1
+    GOAL_MOVE = 2
+    ANY_MOVE = -0.1
+
+    def __init__(self, num_envs: int, time_limit: int = 0):
+        # Preliminaries
+        self.is_vector_env = True
         self.num_envs = num_envs
-        self.seed(seed)
-        self.time_limit = time_limit
-        self.time_elapsed = np.zeros(self.num_envs, dtype=int)
-        self.passenger_locations = np.zeros(self.num_envs, dtype=int)  # Where is passenger to start
-        self.passenger_in_taxi = np.zeros(self.num_envs, dtype=bool)  # Is passenger in taxi
-        self.dropoff_locations = np.zeros(self.num_envs, dtype=int)  # Where is goal
-        self.agent_locations = np.zeros(self.num_envs, dtype=int)  # Where is agent
-        self.episode_returns = np.zeros(self.num_envs)
-        self.reward_per_timestep = -0.1
-        self.reward_goal = 2.
-        self.reward_wrong_movement = reward_wrong_movement
-        self._cur_gamma = np.ones(self.num_envs)
-        self.gamma = gamma
-        if observability == 'loc':
-            self.single_observation_space = gym.spaces.Discrete(self.grid_flat.size)
-            self._obs = lambda: self.agent_locations
-        elif observability == 'pas':
-            self.single_observation_space = gym.spaces.Discrete(int(self.grid_flat.size * 2))
-            self._obs = lambda: self.agent_locations + self.passenger_in_taxi * self.grid_flat.size
-        elif observability == 'grid':
-            self.single_observation_space = gym.spaces.Box(0, 5, (10,), dtype=np.uint8)
-            self._obs = self._grid_obs
+        self.time_limit = time_limit or int(1e6)
+        # down, up, right, left, pickup/dropoff (simplify action space)
+        self.single_action_space = Discrete(na)
+        self.action_space = batch_space(self.single_action_space, num_envs)
+        self.single_observation_space = Discrete(ns)
         self.observation_space = batch_space(self.single_observation_space, num_envs)
-
+        # Agent is at (x,y). Passenger is in 1 of 4 locations or taxi. Destination is in 1 of 4 locations
+        self.seed()
+        self.s = np.zeros(num_envs, int)
+        self.elapsed = np.zeros(num_envs, int)
 
     def seed(self, seed=None):
-        seed = np.random.SeedSequence(seed).entropy  # Takes care of none
-        self.np_random = np.random.default_rng(seed=seed)
+        self.rng, seed = np_random(seed)
         return seed
 
-    def step(self, actions):
-        raise NotImplementedError
-
     def reset(self):
-        self._reset_some(np.ones(self.num_envs, dtype=bool))
-        return self._obs()
+        self._reset_mask(np.ones(self.num_envs, bool))
+        return self.s
 
-    def _reset_some(self, mask):
-        raise NotImplementedError
+    def _reset_mask(self, mask: np.ndarray):
+        b = mask.sum()
+        if b:
+            self.s[mask] = self.rng.multinomial(ns, STATE_DISTRIBUTION, b).argmax(-1)
+            self.elapsed[mask] = 0
+
+    def step(self, actions):
+        self.elapsed += 1
+        r, c, p, d = decode(self.s)
+        r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x), np.clip(c + ACTIONS[actions][:, 1], 0, y)
+        tloc = np.column_stack((r, c))
+        rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
+        p_or_d = actions == 4  # Attempted pickup/dropoff
+        # Goal is dropoff, with passenger in taxi, at destination location
+        goal_move = p_or_d & (p == locs) & (self.locs[d] == tloc).all(-1)
+        # Can pickup if passenger in same location as taxi
+        pickup_move = p_or_d & (p < locs) & (self.locs[p] == tloc).all(-1)
+        p[pickup_move] = locs
+        self.s = encode(r, c, p, d)  # Update state
+        # Any other attempt to pickup/dropoff is wrong. No change in state
+        bad_move = p_or_d & ~goal_move & ~pickup_move
+        rew[goal_move] = self.GOAL_MOVE
+        rew[bad_move] = self.BAD_MOVE
+        done = np.zeros(self.num_envs, bool)
+        done[goal_move] = True
+        done[self.elapsed > self.time_limit] = True
+        return self._obs(), rew, done, {}
 
     def _obs(self):
-        raise NotImplementedError
+        return self.s
 
-    def _grid_obs(self):
-        v = self.grid_flat[self.agent_locations[:, None] + VIEW_3x3]
-        v = np.concatenate((v, self.passenger_in_taxi[:, None]), axis=-1)
-        return v
-
-    def can_pickup(self):
-        return (self.agent_locations == self.passenger_locations) & ~self.passenger_in_taxi
-
-    def can_dropoff(self):
-        return (self.agent_locations == self.dropoff_locations) & self.passenger_in_taxi
-
-    def track_stats(self, mask):
-        infos = []
-        if mask.any():
-            returns = self.episode_returns[mask].tolist()
-            lengths = self.time_elapsed[mask].tolist()
-            infos = [{'episode': {'r': r, 'l': l}} for r, l in zip(returns, lengths)]
-        return infos
+# +1 for left, +2 for below, +4 for right, +8 for above
+WALL_CODES = np.array([
+    [9, 12, 9, 8, 12],
+    [1, 4, 1, 0, 4],
+    [1, 0, 0, 0, 4],
+    [5, 1, 4, 1, 4],
+    [7, 3, 6, 3, 6]
+], dtype=int)
+possible_obs = 16  # len(np.unique(WALL_CODES))
+no = possible_obs * locs * (locs+1)  # 2^4 * 4 * 5
+def encode_obs(o, p, d):
+    """Encode observation using wall code"""
+    return (o * (locs + 1) + p) * locs + d
 
 
+class HansenTaxiVecEnv(TaxiVecEnv):
+    """Make Taxi partially observable as in
+    "Synthesis of Hierarchical Finite-State Controllers for POMDPs"
+    Hansen & Zhou
 
-class POTaxi(TaxiBase):
-    def __init__(self, num_envs: int,
-                 observability: str = 'pas',  # 'loc' for location only, 'pas' for location and passenger in taxi or not, 'grid' for egocentric 3x3 obs (flattened)
-                 reward_wrong_movement: float = -0.1,
-                 time_limit: int = 100,
-                 seed=None
-                 ):
-        super().__init__(num_envs, observability, time_limit, reward_wrong_movement, seed)
-        self.actions = FLAT_ACTIONS_BASE
-        self.single_action_space = gym.spaces.Discrete(len(FLAT_ACTIONS_BASE))
-        self.action_space = batch_space(self.single_action_space, num_envs)
+    Assume Taxi cannot observe its location
+    Instead, it can only observe wall placement in all 4 directions immediately adjacent
+    Passenger and goal locations remain visible
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.single_observation_space = Discrete(no)
+        self.observation_space = batch_space(self.single_observation_space, self.num_envs)
 
-    def _reset_some(self, mask):
-        b = mask.sum()
-        if b:
-            self.time_elapsed[mask] = 0
-            ints = self.np_random.integers(0, self.spawns.size, (2, b))
-            # Adjust overlaps
-            ints[1, ints[0] == ints[1]] = (ints[1, ints[0] == ints[1]]+1) % self.spawns.size
-            self.passenger_locations[mask] = self.spawns[ints[0]]
-            self.dropoff_locations[mask] = self.spawns[ints[1]]
-            self.agent_locations[mask] = self.np_random.choice(self.taxi_spawns, b)
-            self.episode_returns[mask] = 0.
-            self.passenger_in_taxi[mask] = False
-
-    def step(self, actions):
-        self.time_elapsed += 1
-        new_loc = self.agent_locations + FLAT_ACTIONS_BASE[actions]
-        self.agent_locations[self.grid_flat[new_loc] > 0] = new_loc[self.grid_flat[new_loc] > 0]  # Move to valid squares
-        r = np.full(self.num_envs, self.reward_per_timestep)  # Always costs to live
-        pick = self.can_pickup(); drop = self.can_dropoff()
-        goal_achieved = drop & (actions == 5)  # At dropoff point with passenger, attempted dropoff
-        bad_move = ~pick & ~drop & (actions == 5)  # Attempted pickup/dropoff invalid
-        r[bad_move] += self.reward_wrong_movement  # Punish bad pickup
-        r[goal_achieved] += self.reward_goal
-        self.episode_returns += r
-        self.passenger_in_taxi[pick & (actions == 5)] = True
-        d = goal_achieved | (self.time_elapsed >= self.time_limit)
-        info = self.track_stats(d)
-        self._reset_some(d)
-        return self._obs(), r, d, info
-
-class POTaxi_Hard(TaxiBase):
-    def __init__(self, num_envs: int,
-                 observability: str = 'loc',  # 'loc' for location only, 'pas' for location and passenger in taxi or not, 'grid' for egocentric 3x3 obs (flattened)
-                 reward_wrong_movement: float = -0.1,
-                 time_limit: int = 100,
-                 seed=None
-                 ):
-        super().__init__(num_envs, observability, time_limit, reward_wrong_movement, seed)
-        self.single_action_space = gym.spaces.Discrete(5)  # No-op, turn left, turn right, move forward, pickup/dropoff
-        self.action_space = batch_space(self.single_action_space, num_envs)
-        self.agent_orientations = np.zeros(self.num_envs, dtype=int)  # Where is agent facing
-
-    def _reset_some(self, mask):
-        b = mask.sum()
-        if b:
-            self.time_elapsed[mask] = 0
-            ints = self.np_random.integers(0, self.spawns.size, (2, b))
-            # Adjust overlaps
-            ints[1, ints[0] == ints[1]] = (ints[1, ints[0] == ints[1]]+1) % self.spawns.size
-            self.passenger_locations[mask] = self.spawns[ints[0]]
-            self.dropoff_locations[mask] = self.spawns[ints[1]]
-            self.agent_locations[mask] = self.np_random.choice(self.taxi_spawns, b)
-            self.agent_orientations[mask] = self.np_random.integers(0, 4, b)  # Random facing location, N, E, S, W
-            self.episode_returns[mask] = 0.
-            self.passenger_in_taxi[mask] = False
-
-    def step(self, actions):
-        self.time_elapsed += 1
-        new_loc = self.agent_locations + FORWARD_ACTIONS[self.agent_orientations] * (actions == 3)  # If agent moved forward
-        self.agent_locations[self.grid_flat[new_loc] > 0] = new_loc[self.grid_flat[new_loc] > 0]  # Move to valid squares
-        self.agent_orientations[actions == 1] = (self.agent_orientations[actions == 1] + 1) % 4  # Clockwise
-        self.agent_orientations[actions == 2] = (self.agent_orientations[actions == 2] - 1) % 4  # Counterclockwise
-        r = np.full(self.num_envs, self.reward_per_timestep)  # Always costs to live
-        pick = self.can_pickup(); drop = self.can_dropoff()
-        goal_achieved = drop & (actions == 4)  # At dropoff point with passenger, attempted dropoff
-        bad_move = ~pick & ~drop & (actions == 4)  # Attempted pickup/dropoff invalid
-        r[bad_move] += self.reward_wrong_movement  # Punish bad pickup
-        r[goal_achieved] += self.reward_goal
-        self.episode_returns += r  # Add to recorded returns
-        self.passenger_in_taxi[pick & (actions == 4)] = True
-        d = goal_achieved | (self.time_elapsed >= self.time_limit)
-        info = self.track_stats(d)
-        self._reset_some(d)
-        return self._obs(), r, d, info
+    def _obs(self):
+        r, c, p, d = decode(self.s)
+        o = WALL_CODES[r, c]
+        return encode_obs(o, p, d)
 
 
-
-
-
-if __name__ == "__main__":
-    e = POTaxi_Hard(16)
-    o = e.reset()
-    for t in range(10000):
-        o, r, d, info = e.step(e.action_space.sample())
-        print(info)
-    #
-    # e2 = POTaxi_Hard(16)
-    # o = e.reset()
-    # o2 = e2.reset()
-    # print(o)
-    # o, r, d, info = e.step(e.action_space.sample())
