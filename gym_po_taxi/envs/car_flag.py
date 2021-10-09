@@ -7,19 +7,23 @@ from gym.envs.classic_control import rendering as visualize
 from gym.utils import seeding
 from gym.vector.utils import batch_space
 
-class CarEnv(gym.Env):
+class CarVecEnv(gym.Env):
+    # Physics and task params
     MAX_POS = 1.1
     MIN_POS = -MAX_POS
     MAX_SPEED = 0.07
     MIN_ACT = -1.
     MAX_ACT = 1.
     PRIEST = 0.5
+    PRIEST_THRESHOLD = 0.2
     POWER = 0.0015
 
+    # Rendering
     SCREEN_WIDTH = 600
     SCREEN_HEIGHT = 400
-    PRIEST_THRESHOLD = 0.2
     SCALE = SCREEN_WIDTH / (MAX_POS - MIN_POS)
+    HEIGHT = 0.55
+
     def __init__(
         self,
         num_envs: int,
@@ -114,159 +118,96 @@ class CarEnv(gym.Env):
     def _reset_mask(self, mask):
         b = mask.sum()
         if b:
-            self.s[mask] = np.concatenate((self.rng.uniform(-0.2, 0.2, (b, 1)), np.zeros(b, dtype=np.float32)),axis=-1)
+            self.s[mask] = np.concatenate((self.rng.uniform(-0.2, 0.2, (b, 1)), np.zeros((b,2), dtype=np.float32)),axis=-1)
             self.elapsed[mask] = 0
             self.heavens[mask] = self.rng.choice([-1, 1], b)
             self.hells[mask] = -self.heavens[mask]
+            if mask[0] & (self.viewer is not None): self._draw_flags()  # Redraw flags if we sampled 0 index
 
     def step(self, actions: np.ndarray):
         self.elapsed += 1
+        actions = actions.flatten()
         force = np.clip(actions, self.MIN_ACT, self.MAX_ACT)
         # Position, velocity, priest indicator
-        position = self._state[0]
-        velocity = self._state[1]
         new_velocity = np.clip(self.s[:, 1] + (force * self.POWER), -self.MAX_SPEED, self.MAX_SPEED)
-        new_position = np.clip(self.s[:, 0] + new_velocity, -self.MIN_POS, self.MAX_POS)
+        new_position = np.clip(self.s[:, 0] + new_velocity, self.MIN_POS, self.MAX_POS)
         new_velocity[(new_position == self.MIN_POS) & (new_velocity < 0)] = 0
         dones = np.abs(new_position) >= 1.  # Heaven and hell are -1,1
-        rewards = np.zeros(self.num_envs)
-        rewards[]
-        reward = 0.0
-        if self.heaven_position > self.hell_position:
-            if position >= self.heaven_position:
-                reward = 1.0
-
-            if position <= self.hell_position:
-                reward = -1.0
-                # env_reward = self.steps_cnt - self.max_ep_length
-
-        if self.heaven_position < self.hell_position:
-            if position <= self.heaven_position:
-                reward = 1.0
-
-            if position >= self.hell_position:
-                reward = -1.0
-                # env_reward = self.steps_cnt - self.max_ep_length
-
-        direction = 0.0
-        if (
-            position >= self.priest_position - self.priest_delta
-            and position <= self.priest_position + self.priest_delta
-        ):
-            if self.heaven_position > self.hell_position:
-                # Heaven on the right
-                direction = 1.0
-            else:
-                # Heaven on the left
-                direction = -1.0
-
-        self._state = np.array([position, velocity, direction])
-        self.solved = reward > 0.0
-
-        # if self.solved:
-        #     env_reward = 0
-
+        hh = np.sign(new_position)  # Convert position to heaven/hell
+        rewards = np.zeros(self.num_envs, dtype=np.float32)
+        rewards[(hh == self.heavens) & dones] = 1.
+        rewards[(hh == self.hells) & dones] = -1.
+        dones |= (self.elapsed > self.time_limit)
+        directions = np.where((new_position >= self.PRIEST - self.PRIEST_THRESHOLD) &
+                               (new_position <= self.PRIEST + self.PRIEST_THRESHOLD), 1., 0.)
+        directions[directions == 1] = self.heavens[directions == 1]
+        self.s[~dones] = np.column_stack((new_position[~dones], new_velocity[~dones], directions[~dones]))
+        self._reset_mask(dones)
         if self.show:
             self.render()
 
-        # return self._state, env_reward, done, {"is_success": reward > 0.0}
-        return self._state, reward, done, {"is_success": reward > 0.0}
+        return self._obs(), rewards, dones, {"is_success": rewards > 0.0}
+
+    def _obs(self):
+        return self.s
 
     def render(self, mode='human'):
         self._setup_view()
 
-        pos = self._state[0]
+        pos = self.s[0, 0]
         self.cartrans.set_translation(
-            (pos - self.min_position) * self.scale,
-            self._height(pos) * self.scale,
+            (pos - self.MIN_POS) * self.SCALE,
+            self.HEIGHT * self.SCALE,
         )
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
-    def reset(self):
-
-        self.solved = False
-        self.done = False
-        self.steps_cnt = 0
-
-        # Randomize the heaven/hell location
-        if self.np_random.randint(2) == 0:
-            self.heaven_position = 1.0
-        else:
-            self.heaven_position = -1.0
-
-        self.hell_position = -self.heaven_position
-
-        if self.viewer is not None:
-            self._draw_flags()
-            self._draw_boundary()
-
-        self._state = np.array(
-            [self.np_random.uniform(low=-0.2, high=0.2), 0, 0.0]
-        )
-        return np.array(self._state)
-
-    def _height(self, xs):
-        return 0.55 * np.ones_like(xs)
 
     def _draw_boundary(self):
         flagx = (
-            self.priest_position - self.priest_delta - self.min_position
-        ) * self.scale
-        flagy1 = self._height(self.priest_position) * self.scale
+            self.PRIEST - self.PRIEST_THRESHOLD - self.MIN_POS
+        ) * self.SCALE
+        flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
         flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
         self.viewer.add_geom(flagpole)
 
         flagx = (
-            self.priest_position + self.priest_delta - self.min_position
-        ) * self.scale
-        flagy1 = self._height(self.priest_position) * self.scale
+            self.PRIEST + self.PRIEST_THRESHOLD - self.MIN_POS
+        ) * self.SCALE
+        flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
         flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
         self.viewer.add_geom(flagpole)
 
     def _draw_flags(self):
-        scale = self.scale
         # Flag Heaven
-        flagx = (abs(self.heaven_position) - self.min_position) * scale
-        flagy1 = self._height(self.heaven_position) * scale
+        flagx = (self.heavens[0] - self.MIN_POS) * self.SCALE
+        flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
         flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
         self.viewer.add_geom(flagpole)
         flag = visualize.FilledPolygon(
             [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
         )
-
-        # RED for hell
-        if self.heaven_position > self.hell_position:
-            flag.set_color(0.0, 1.0, 0)
-        else:
-            flag.set_color(1.0, 0.0, 0)
-
+        flag.set_color(0., 1., 0.)
         self.viewer.add_geom(flag)
 
         # Flag Hell
-        flagx = (-abs(self.heaven_position) - self.min_position) * scale
-        flagy1 = self._height(self.hell_position) * scale
+        flagx = (self.hells[0] - self.MIN_POS) * self.SCALE
+        flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
         flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
         self.viewer.add_geom(flagpole)
         flag = visualize.FilledPolygon(
             [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
         )
-
-        # GREEN for heaven
-        if self.heaven_position > self.hell_position:
-            flag.set_color(1.0, 0.0, 0)
-        else:
-            flag.set_color(0.0, 1.0, 0)
-
+        flag.set_color(1.0, 0.0, 0)
         self.viewer.add_geom(flag)
 
         # BLUE for priest
-        flagx = (self.priest_position - self.min_position) * scale
-        flagy1 = self._height(self.priest_position) * scale
+        flagx = (self.PRIEST - self.MIN_POS) * self.SCALE
+        flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
         flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
         self.viewer.add_geom(flagpole)
@@ -279,12 +220,11 @@ class CarEnv(gym.Env):
     def _setup_view(self):
         if not self.setup_view:
             self.viewer = visualize.Viewer(
-                self.screen_width, self.screen_height
+                self.SCREEN_WIDTH, self.SCREEN_HEIGHT
             )
-            scale = self.scale
-            xs = np.linspace(self.min_position, self.max_position, 100)
-            ys = self._height(xs)
-            xys = list(zip((xs - self.min_position) * scale, ys * scale))
+            xs = np.linspace(self.MIN_POS, self.MAX_POS, 100)
+            ys = np.full_like(xs, self.HEIGHT)
+            xys = list(zip((xs - self.MIN_POS) * self.SCALE, ys * self.SCALE))
 
             self.track = visualize.make_polyline(xys)
             self.track.set_linewidth(4)
@@ -317,67 +257,7 @@ class CarEnv(gym.Env):
 
             self._draw_flags()
             self._draw_boundary()
-
-            if self.args is not None:
-                if self.n_layers in [2, 3]:
-
-                    ################ Goal 1 ################
-                    car1 = visualize.FilledPolygon(
-                        [(l, b), (l, t), (r, t), (r, b)]
-                    )
-                    car1.set_color(1, 0.0, 0.0)
-                    car1.add_attr(
-                        visualize.Transform(translation=(0, clearance))
-                    )
-                    self.cartrans1 = visualize.Transform()
-                    car1.add_attr(self.cartrans1)
-                    self.viewer.add_geom(car1)
-                    ######################################
-
-                if self.n_layers in [3]:
-
-                    ############### Goal 2 ###############
-                    car2 = visualize.FilledPolygon(
-                        [(l, b), (l, t), (r, t), (r, b)]
-                    )
-                    car2.set_color(0.0, 1, 0.0)
-                    car2.add_attr(
-                        visualize.Transform(translation=(0, clearance))
-                    )
-                    self.cartrans2 = visualize.Transform()
-                    car2.add_attr(self.cartrans2)
-                    self.viewer.add_geom(car2)
-                    ######################################
-
             self.setup_view = True
-
-    def display_subgoals(self, subgoals, mode="human"):
-        self._setup_view()
-
-        if self.show:
-            pos = self._state[0]
-            self.cartrans.set_translation(
-                (pos - self.min_position) * self.scale,
-                self._height(pos) * self.scale,
-            )
-
-            if self.n_layers in [2, 3]:
-                pos1 = subgoals[0][0]
-                self.cartrans1.set_translation(
-                    (pos1 - self.min_position) * self.scale,
-                    self._height(pos1) * self.scale,
-                )
-
-            if self.n_layers in [3]:
-                pos2 = subgoals[1][0]
-                self.cartrans2.set_translation(
-                    (pos2 - self.min_position) * self.scale,
-                    self._height(pos2) * self.scale,
-                )
-
-            return self.viewer.render(return_rgb_array=mode == 'rgb_array')
-        else:
-            return
 
     def close(self):
         if self.viewer:
@@ -385,13 +265,11 @@ class CarEnv(gym.Env):
             self.viewer = None
 
 
+
 class CarEnvWrapper(gym.ActionWrapper):
     def __init__(self, env: gym.Env, *, num_actions: int):
         super().__init__(env)
 
-        self.state_space = gym.spaces.Box(
-            low=self.low_state, high=self.high_state
-        )
         self.action_space = gym.spaces.Discrete(num_actions)
         self.__actions = np.linspace(
             self.min_action, self.max_action, num_actions
