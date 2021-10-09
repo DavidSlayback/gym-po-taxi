@@ -272,7 +272,7 @@ class TaxiVecEnv(Env):
     def step(self, actions):
         self.elapsed += 1
         r, c, p, d = decode(self.s)
-        r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x), np.clip(c + ACTIONS[actions][:, 1], 0, y)
+        r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x-1), np.clip(c + ACTIONS[actions][:, 1], 0, y-1)
         tloc = np.column_stack((r, c))
         rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
         p_or_d = actions == 4  # Attempted pickup/dropoff
@@ -327,5 +327,4 @@ class HansenTaxiVecEnv(TaxiVecEnv):
         r, c, p, d = decode(self.s)
         o = WALL_CODES[r, c]
         return encode_obs(o, p, d)
-
 

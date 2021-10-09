@@ -1,5 +1,4 @@
-import time
-
+__all__ = ['CarVecEnv', 'DiscreteActionCarVecEnv']
 import gym
 import numpy as np
 from gym import spaces
@@ -27,7 +26,6 @@ class CarVecEnv(gym.Env):
     def __init__(
         self,
         num_envs: int,
-        args=None,
         time_limit: int = 160,
         seed=0,
         rendering=False,
@@ -43,62 +41,9 @@ class CarVecEnv(gym.Env):
         self.single_action_space = spaces.Box(self.MIN_ACT, self.MAX_ACT, (1,), dtype=np.float32)
         self.action_space = batch_space(self.single_action_space, num_envs)
 
-        #################### START CONFIGS #######################
-        self.args = args
-
-        self.action_dim = 1
-        self.action_bounds = [1.0]
-        self.action_offset = np.zeros((len(self.action_bounds)))
-
-        self.subgoal_bounds = np.array(
-            [
-                [self.MIN_POS, self.MAX_POS],
-                [-self.MAX_SPEED, self.MAX_SPEED],
-            ]
-        )
-        self.subgoal_dim = len(self.subgoal_bounds)
-
-        # functions to project state to goal
-        self.project_state_to_subgoal = lambda sim, state: state[:-1]
-        self.subgoal_bounds_symmetric = np.zeros((len(self.subgoal_bounds)))
-        self.subgoal_bounds_offset = np.zeros((len(self.subgoal_bounds)))
-
-        for i in range(len(self.subgoal_bounds)):
-            self.subgoal_bounds_symmetric[i] = (
-                self.subgoal_bounds[i][1] - self.subgoal_bounds[i][0]
-            ) / 2
-            self.subgoal_bounds_offset[i] = (
-                self.subgoal_bounds[i][1] - self.subgoal_bounds_symmetric[i]
-            )
-
-        self.subgoal_thresholds = np.array([0.05, 0.01])
-
-        self.state_dim = 3
-        self.low_obs_dim = 2
-
-        self.name = "Car-Flag-POMDP"
-
-        # Configs for agent
-        agent_params = {}
-        agent_params["subgoal_test_perc"] = 0.3
-
-        agent_params["random_action_perc"] = 0.2
-        agent_params["num_pre_training_episodes"] = -1
-
-        agent_params["atomic_noise"] = [0.1]
-        agent_params["subgoal_noise"] = [0.1, 0.1]
-
-        agent_params["num_exploration_episodes"] = 50
-
-        self.agent_params = agent_params
-        self.sim = None
-        #################### END CONFIGS #######################
         self.setup_view = False
         self.viewer = None
         self.show = rendering
-
-        if args is not None:
-            self.n_layers = args.n_layers
 
         self.seed(seed)
         self.s = np.zeros((self.num_envs, 3), dtype=np.float32)
@@ -265,24 +210,13 @@ class CarVecEnv(gym.Env):
             self.viewer = None
 
 
+class DiscreteActionCarVecEnv(CarVecEnv):
+    def __init__(self, num_actions: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._actions = np.linspace(self.MIN_ACT, self.MAX_ACT, num_actions)
+        self.single_action_space = spaces.Discrete(num_actions)
+        self.action_space = batch_space(self.single_action_space, self.num_envs)
 
-class CarEnvWrapper(gym.ActionWrapper):
-    def __init__(self, env: gym.Env, *, num_actions: int):
-        super().__init__(env)
-
-        self.action_space = gym.spaces.Discrete(num_actions)
-        self.__actions = np.linspace(
-            self.min_action, self.max_action, num_actions
-        )
-
-    def action(self, action):
-        return self.__actions[action]
-
-    def reverse_action(self, action):
-        return next(i for i, a in enumerate(self.__actions) if a == action)
-
-    @property
-    def state(self):
-        state = self.env._state.copy()
-        state[-1] = self.env.heaven_position
-        return state
+    def step(self, actions: np.ndarray):
+        actions = self._actions[actions]
+        return super().step(actions)
