@@ -1,4 +1,4 @@
-__all__ = ['FourRoomsVecEnv']
+__all__ = ['FourRoomsVecEnv', 'HansenFourRoomsVecEnv']
 
 import numpy as np
 from gym import Env
@@ -6,6 +6,11 @@ from gym.spaces import Discrete, Box
 from gym.vector.utils import batch_space
 from gym.utils.seeding import np_random
 from typing import Optional
+
+WALL = 0
+EMPTY = 1
+STAIR = 2
+GOAL = 3
 
 # Up, right, down, left
 ACTIONS = np.array([
@@ -17,19 +22,19 @@ ACTIONS = np.array([
 
 # Basic 13x13 FourRooms grid. 0 is wall. 1 is empty
 MAP = np.array([
-    [0]*13,
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0]+([1]*11) + [0],
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0, 0, 1] + ([0]*4) + ([1]*5) + [0],
-    [0] + ([1]*5) + ([0]*3) + [1] + ([0]*3),
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0]+([1]*11) + [0],
-    [0]+([1]*5) + [0] + ([1]*5) + [0],
-    [0]*13,
+    [WALL]*13,
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL]+([EMPTY]*11) + [WALL],
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL, WALL, EMPTY] + ([WALL]*4) + ([EMPTY]*5) + [WALL],
+    [WALL] + ([EMPTY]*5) + ([WALL]*3) + [EMPTY] + ([WALL]*3),
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL]+([EMPTY]*11) + [WALL],
+    [WALL]+([EMPTY]*5) + [WALL] + ([EMPTY]*5) + [WALL],
+    [WALL]*13,
 ], dtype=int)
 FLAT_MAP = MAP.ravel()
 
@@ -38,7 +43,7 @@ y, x = MAP.shape
 FLAT_ACTIONS = np.ravel_multi_index((ACTIONS+1).T, (y,x)) - np.ravel_multi_index((1,1), (y,x))
 EMPTY_LOCS = MAP.nonzero()
 FLAT_EMPTY_LOCS = np.ravel_multi_index(EMPTY_LOCS, (y, x))
-GRID_ENCODER = MAP.copy(); GRID_ENCODER[GRID_ENCODER==0] = -1
+GRID_ENCODER = MAP.copy(); GRID_ENCODER[GRID_ENCODER==WALL] = -1
 GRID_ENCODER[EMPTY_LOCS] = np.arange(len(FLAT_EMPTY_LOCS))
 
 def base_encode(r, c):
@@ -139,11 +144,31 @@ class FourRoomsVecEnv(Env):
 
     def _check_bounds(self, proposed_locations: np.ndarray):
         valid = (0 <= proposed_locations) & (proposed_locations < FLAT_MAP.size)  # In bounds
-        valid[valid] = FLAT_MAP[proposed_locations[valid]]
+        valid[valid] = FLAT_MAP[proposed_locations[valid]] != WALL
         return valid
 
+multipliers = np.array([1, 3, 9, 27])
+def hansen_encode(adj: np.ndarray, goals: np.ndarray):
+    g = FLAT_MAP[adj]
+    g[adj == goals[..., None]] = 2
+    return (g * multipliers).sum(-1)
+    # g2 = g * multipliers
+    # return None
+
+class HansenFourRoomsVecEnv(FourRoomsVecEnv):
+    """Use Hansen taxi-style observations (only immediately adjacent walls and goals)"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.single_observation_space = Discrete(81)
+        self.observation_space = batch_space(self.single_observation_space, self.num_envs)
+
+    def _obs(self):
+        adj = self.agent[..., None] + FLAT_ACTIONS
+        return hansen_encode(adj, self.goal)
+
+
 if __name__ == "__main__":
-    e = FourRoomsVecEnv(8)
+    e = HansenFourRoomsVecEnv(8)
     o = e.reset()
     for t in range(100000):
         o, r, d, info = e.step(e.action_space.sample())
