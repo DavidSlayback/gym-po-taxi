@@ -147,13 +147,13 @@ class FourRoomsVecEnv(Env):
         valid[valid] = FLAT_MAP[proposed_locations[valid]] != WALL
         return valid
 
+
 multipliers = np.array([1, 3, 9, 27])
 def hansen_encode(adj: np.ndarray, goals: np.ndarray):
     g = FLAT_MAP[adj]
     g[adj == goals[..., None]] = 2
     return (g * multipliers).sum(-1)
-    # g2 = g * multipliers
-    # return None
+
 
 class HansenFourRoomsVecEnv(FourRoomsVecEnv):
     """Use Hansen taxi-style observations (only immediately adjacent walls and goals)"""
