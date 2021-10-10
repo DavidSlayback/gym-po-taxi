@@ -41,6 +41,8 @@ ACTIONS = np.array([
     [1, 0, 0],
     [-1, 0, 0]
 ], dtype=int)
+UPSTAIR_OFFSET = int((10*13) - 10)  # NE-> SW
+DOWNSTAIR_OFFSET = int((-10*13) + 10)  # SW -> NE
 
 # Add stairs to bottom, mid, and top floors
 B_MAP, M_MAP, T_MAP = [MAP.copy()] * 3
@@ -58,7 +60,10 @@ def generate_layout(grid_z: int = 1):
 
 def generate_flat_actions(grid_z: int = 1):
     """Generate flattened versions of actions"""
-    return np.ravel_multi_index((ACTIONS+1).T, (grid_z, y, x)) - np.ravel_multi_index((1, 1, 1), (grid_z, y, x))
+    a = np.ravel_multi_index((ACTIONS+1).T, (grid_z, y, x)) - np.ravel_multi_index((1, 1, 1), (grid_z, y, x))
+    a[-2] += UPSTAIR_OFFSET
+    a[-1] += DOWNSTAIR_OFFSET
+    return a
 
 
 def action_probability_matrix(action_failure_probability: float = (1./3), action_n: int = 4):
