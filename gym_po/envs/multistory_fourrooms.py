@@ -12,16 +12,6 @@ EMPTY = 1
 STAIR = 2
 GOAL = 3
 
-# Up, right, down, left, upstairs, downstairs (z, y, x)
-ACTIONS = np.array([
-    [0, -1, 0],
-    [0, 0, 1],
-    [0, 1, 0],
-    [0, 0, -1],
-    [1, 0, 0],
-    [-1, 0, 0]
-], dtype=int)
-
 # Basic 13x13 FourRooms grid. 0 is wall. 1 is empty
 MAP = np.array([
     [WALL]*13,
@@ -41,6 +31,16 @@ MAP = np.array([
 y, x = MAP.shape
 NE = (1, 11)  # NE stairs are upstairs
 SW = (11, 1)  # SW stairs are downstairs
+
+# Up, right, down, left, upstairs, downstairs (z, y, x)
+ACTIONS = np.array([
+    [0, -1, 0],
+    [0, 0, 1],
+    [0, 1, 0],
+    [0, 0, -1],
+    [1, 0, 0],
+    [-1, 0, 0]
+], dtype=int)
 
 # Add stairs to bottom, mid, and top floors
 B_MAP, M_MAP, T_MAP = [MAP.copy()] * 3
@@ -98,7 +98,7 @@ class MultistoryFourRoomsVecEnv(Env):
         self.grid = generate_layout(grid_z)
         self.EMPTY_LOCS = (self.grid == EMPTY).nonzero()
         self.grid_flat = self.grid.ravel()
-        self.FLAT_EMPTY = np.ravel_multi_index(EMPTY_LOCS, (grid_z, y, x))
+        self.FLAT_EMPTY = np.ravel_multi_index(self.EMPTY_LOCS, (grid_z, y, x))
         self.actions = generate_flat_actions(grid_z)
 
         # Observations
@@ -145,6 +145,8 @@ class MultistoryFourRoomsVecEnv(Env):
         new_loc = self.agent + self.actions[a]
         b = self._check_bounds(new_loc)
         self.agent[b] = new_loc[b]  # Update where move was valid
+        # Now process stairs
+
         r = np.zeros(self.num_envs, dtype=np.float32)
         d = (self.agent == self.goal)  # Done where we reached goal
         r[d] = 1.
