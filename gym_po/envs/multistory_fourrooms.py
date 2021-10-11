@@ -1,4 +1,4 @@
-
+import time
 
 import numpy as np
 from gym import Env
@@ -49,17 +49,23 @@ def tile_images(img_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no cov
     out_image = out_image.reshape((new_height * height, new_width * width, n_channels))
     return out_image
 
-def grid_to_rgb(grid: np.ndarray, n_pixel: int = 8, agent_rc: Optional[Tuple[int, int]] = None) -> np.ndarray:
+def grid_to_rgb(grid: np.ndarray, n_pixel: int = 8, grid_highlight: Optional[np.ndarray] = None) -> np.ndarray:
     """Convert base grid observation to pixels"""
-    # img_grid = grid.copy())
+    grid = grid.swapaxes(-2, -1)
+    if grid_highlight is not None: grid_highlight = grid_highlight.swapaxes(-2, -1)
     (n, h, w), c = grid.shape, 3
-    if agent_rc is not None:  # If we didn't already put agent in
-        grid[np.arange(n), agent_rc[0], agent_rc[1]] = AGENT  # Set agent
     img = np.zeros((n, h*n_pixel, w*n_pixel, c), dtype=np.uint8)
-    for b in range(n):
-        for y in range(h):
-            for x in range(w):
-                img[b, y*n_pixel:y*n_pixel+n_pixel, x*n_pixel:x*n_pixel+n_pixel] = FRCOLORS[grid[b,y,x]]  # Fill with color
+    if grid_highlight is None:
+        for b in range(n):
+            for y in range(h):
+                for x in range(w):
+                    img[b, y*n_pixel:y*n_pixel+n_pixel, x*n_pixel:x*n_pixel+n_pixel] = FRCOLORS[grid[b,y,x]] # Fill with color
+    else:
+        for b in range(n):
+            for y in range(h):
+                for x in range(w):
+                    img[b, y * n_pixel:y * n_pixel + n_pixel, x * n_pixel:x * n_pixel + n_pixel] = FRCOLORS[
+                        grid[b, y, x]] + VIEW_COLOR_OFFSET * grid_highlight[b, y, x]
     return tile_images(img)
 
 # Basic 13x13 FourRooms grid. 0 is wall. 1 is empty
@@ -204,11 +210,11 @@ class MultistoryFourRoomsVecEnv(Env):
         idx = np.atleast_1d(idx)
         floors, r, c = self.decode(self.agent[idx])
         g_floors, g_r, g_c = self.decode(self.goal[idx])
-        show_goal = floors == g_floors
+        show_goal = np.flatnonzero(floors == g_floors)
         g = self.grid[floors]
-        g[show_goal, g_r, g_c] = GOAL
-        g[:, r, c] = AGENT
-        img = grid_to_rgb(self.grid[floors])
+        g[show_goal, g_r[show_goal], g_c[show_goal]] = GOAL
+        g[idx, r, c] = AGENT
+        img = grid_to_rgb(g)
         if mode == 'rgb' or mode == 'rgb_array': return img
         else:
             import pygame
@@ -219,8 +225,6 @@ class MultistoryFourRoomsVecEnv(Env):
             self._viewer.blit(sfc, (0,0))
             pygame.display.update()
             return img
-
-
 
     def _convert_goal_tuple(self, goal: Union[List[int], Tuple[int], int]):
         if isinstance(goal, (Tuple, List)):
@@ -338,6 +342,27 @@ class GridMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
         o[goal_idx] = GOAL
         return o
 
+    def render(self, mode='human', idx: np.ndarray = np.array([0], dtype=np.int64),
+               cell_pixel_size: int = 16):
+        idx = np.atleast_1d(idx)
+        floors, r, c = self.decode(self.agent[idx])
+        g_floors, g_r, g_c = self.decode(self.goal[idx])
+        show_goal = np.flatnonzero(floors == g_floors)
+        g = self.grid[floors]
+        g[show_goal, g_r[show_goal], g_c[show_goal]] = GOAL
+        g[idx, r, c] = AGENT
+        img = grid_to_rgb(g)
+        if mode == 'rgb' or mode == 'rgb_array': return img
+        else:
+            import pygame
+            if self._viewer is None:
+                pygame.init()
+                self._viewer = pygame.display.set_mode(img.shape[:-1])
+            sfc = pygame.surfarray.make_surface(img)
+            self._viewer.blit(sfc, (0,0))
+            pygame.display.update()
+            return img
+
 
 
 
@@ -353,7 +378,8 @@ if __name__ == "__main__":
     o3, r3, d3, info3 = e3.step(e3.action_space.sample())
     for t in range(10000):
         o, r, d, info = e.step(e.action_space.sample())
-        e.render()
+        e.render(idx=np.arange(8))
+        time.sleep(0.1)
         o2, r2, d2, info2 = e2.step(e.action_space.sample())
         o3, r3, d3, info3 = e3.step(e.action_space.sample())
         assert (o2 < 255).all()
