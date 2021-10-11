@@ -12,6 +12,16 @@ EMPTY = 1
 STAIR = 2
 GOAL = 3
 
+# RGB Colors for these
+np.array([
+    [0, 0, 0],  # Black walls
+    [128,128,128],  # Gray empty
+    [0, 0, 128],  # Blue stairs
+    [0, 128, 0],  # Green goal
+    [128, 0, 0]  # Red agent
+], dtype=np.uint8)
+VIEW_COLOR = [60, 60, 60]  # Add 60 to every color in view
+
 # Up, right, down, left
 ACTIONS = np.array([
     [-1, 0],
@@ -159,7 +169,7 @@ class HansenFourRoomsVecEnv(FourRoomsVecEnv):
     """Use Hansen taxi-style observations (only immediately adjacent walls and goals)"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.single_observation_space = Discrete(81)
+        self.single_observation_space = Discrete((multipliers*2).sum()+1)
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
 
     def _obs(self):
