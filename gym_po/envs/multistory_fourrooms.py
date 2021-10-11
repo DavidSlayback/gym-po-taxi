@@ -203,7 +203,12 @@ class MultistoryFourRoomsVecEnv(Env):
                cell_pixel_size: int = 16):
         idx = np.atleast_1d(idx)
         floors, r, c = self.decode(self.agent[idx])
-        img = grid_to_rgb(self.grid[floors], agent_rc=(r[idx], c[idx]))
+        g_floors, g_r, g_c = self.decode(self.goal[idx])
+        show_goal = floors == g_floors
+        g = self.grid[floors]
+        g[show_goal, g_r, g_c] = GOAL
+        g[:, r, c] = AGENT
+        img = grid_to_rgb(self.grid[floors])
         if mode == 'rgb' or mode == 'rgb_array': return img
         else:
             import pygame
