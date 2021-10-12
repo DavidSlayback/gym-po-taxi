@@ -218,11 +218,11 @@ def encode(r, c, p, d):
 def decode(i):
     """Discrete state -> row, col, pass_idx, dest_idx"""
     d = i % locs
-    i //= locs
-    p = i % 5
-    i //= y
-    c = i % 5
-    r = i // x
+    tmp = i // locs
+    p = tmp % 5
+    tmp = tmp // 5
+    c = tmp % 5
+    r = tmp // 5
     return r, c, p, d
 
 # Initial state distribution
@@ -261,7 +261,7 @@ class TaxiVecEnv(Env):
 
     def reset(self):
         self._reset_mask(np.ones(self.num_envs, bool))
-        return self.s
+        return self._obs()
 
     def _reset_mask(self, mask: np.ndarray):
         b = mask.sum()
@@ -272,7 +272,6 @@ class TaxiVecEnv(Env):
     def step(self, actions):
         self.elapsed += 1
         r, c, p, d = decode(self.s)
-        assert (p != d).all()
         r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x-1), np.clip(c + ACTIONS[actions][:, 1], 0, y-1)
         tloc = np.column_stack((r, c))
         rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
