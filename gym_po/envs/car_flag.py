@@ -91,7 +91,7 @@ class CarVecEnv(gym.Env):
         if self.show:
             self.render()
 
-        return self._obs(), rewards, dones, {"is_success": rewards > 0.0}
+        return self._obs(), rewards, dones, [{}] * self.num_envs
 
     def _obs(self):
         return self.s
@@ -211,6 +211,7 @@ class CarVecEnv(gym.Env):
 
 
 class DiscreteActionCarVecEnv(CarVecEnv):
+    """"""
     def __init__(self, num_actions: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._actions = np.linspace(self.MIN_ACT, self.MAX_ACT, num_actions)

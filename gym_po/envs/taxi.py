@@ -236,9 +236,9 @@ class TaxiVecEnv(Env):
     desc = np.asarray(MAP, dtype='c')
     locs = np.array([(0, 0), (0, 4), (4, 0), (4, 3), (-1, -1)])  # R, G, Y, B, invalid
     # Scale rewards down by factor of 10
-    BAD_MOVE = -1
-    GOAL_MOVE = 2
-    ANY_MOVE = -0.1
+    BAD_MOVE = -0.5
+    GOAL_MOVE = 1
+    ANY_MOVE = -0.05
 
     def __init__(self, num_envs: int, time_limit: int = 0):
         # Preliminaries
@@ -272,6 +272,7 @@ class TaxiVecEnv(Env):
     def step(self, actions):
         self.elapsed += 1
         r, c, p, d = decode(self.s)
+        assert (p != d).all()
         r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x-1), np.clip(c + ACTIONS[actions][:, 1], 0, y-1)
         tloc = np.column_stack((r, c))
         rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
@@ -289,7 +290,8 @@ class TaxiVecEnv(Env):
         done = np.zeros(self.num_envs, bool)
         done[goal_move] = True
         done[self.elapsed > self.time_limit] = True
-        return self._obs(), rew, done, {}
+        self._reset_mask(done)
+        return self._obs(), rew, done, [{}] * self.num_envs
 
     def _obs(self):
         return self.s

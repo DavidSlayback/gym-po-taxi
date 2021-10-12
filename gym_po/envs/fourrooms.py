@@ -150,7 +150,7 @@ class FourRoomsVecEnv(Env):
         r[~b] = self.wall_reward  # Potentially penalize hitting walls
         d |= self.elapsed > self.time_limit  # Also done where we're out of time
         self._reset_mask(d)
-        return self._obs, r, d, {}
+        return self._obs, r, d, [{}] * self.num_envs
 
     def _check_bounds(self, proposed_locations: np.ndarray):
         valid = (0 <= proposed_locations) & (proposed_locations < FLAT_MAP.size)  # In bounds
