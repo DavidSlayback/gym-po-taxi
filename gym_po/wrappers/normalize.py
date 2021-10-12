@@ -1,13 +1,16 @@
 import numpy as np
 import gym
+from numba import njit, float64
+from numba.experimental import jitclass
 
 
 # taken from https://github.com/openai/baselines/blob/master/baselines/common/vec_env/vec_normalize.py
+# @jitclass([('mean', float64[:]), ('var', float64[:]), ('count', float64)])
 class RunningMeanStd(object):
     # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
     def __init__(self, epsilon=1e-4, shape=()):
-        self.mean = np.zeros(shape, "float64")
-        self.var = np.ones(shape, "float64")
+        self.mean = np.zeros(shape, dtype=np.float64)
+        self.var = np.ones(shape, dtype=np.float64)
         self.count = epsilon
 
     def update(self, x):
@@ -35,6 +38,7 @@ class RunningMean(object):
         self.mean += (batch_mean - self.mean) * (batch_count / self.count)
 
 
+@njit
 def update_mean_var_count_from_moments(
     mean, var, count, batch_mean, batch_var, batch_count
 ):
