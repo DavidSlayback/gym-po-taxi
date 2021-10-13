@@ -14,6 +14,6 @@ setup(
         "Operating System :: POSIX",
         "Operating System :: MacOS :: MacOS X",
     ],
-    packages=find_namespace_packages('gym-po'),
+    packages=find_namespace_packages('gym_po', 'gym_po.*'),
     install_requires=["gym", "numpy", "numba"],
 )
