@@ -288,7 +288,7 @@ class TaxiVecEnv(Env):
         rew[bad_move] = self.BAD_MOVE
         done = np.zeros(self.num_envs, bool)
         done[goal_move] = True
-        done[self.elapsed > self.time_limit] = True
+        done[self.elapsed >= self.time_limit] = True
         self._reset_mask(done)
         return self._obs(), rew, done, [{}] * self.num_envs
 

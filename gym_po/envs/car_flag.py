@@ -82,7 +82,7 @@ class CarVecEnv(gym.Env):
         rewards = np.zeros(self.num_envs, dtype=np.float32)
         rewards[(hh == self.heavens) & dones] = 1.
         rewards[(hh == self.hells) & dones] = -1.
-        dones |= (self.elapsed > self.time_limit)
+        dones |= (self.elapsed >= self.time_limit)
         directions = np.where((new_position >= self.PRIEST - self.PRIEST_THRESHOLD) &
                                (new_position <= self.PRIEST + self.PRIEST_THRESHOLD), 1., 0.)
         directions[directions == 1] = self.heavens[directions == 1]

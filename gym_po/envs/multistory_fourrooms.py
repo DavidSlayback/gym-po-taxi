@@ -284,7 +284,7 @@ class MultistoryFourRoomsVecEnv(Env):
         d = (self.agent == self.goal)  # Done where we reached goal
         r[d] = 1.
         r[~moved] = self.wall_reward  # Potentially penalize hitting walls
-        d |= self.elapsed > self.time_limit  # Also done where we're out of time
+        d |= self.elapsed >= self.time_limit  # Also done where we're out of time
         self._reset_mask(d)
         return self._obs(), r, d, [{}] * self.num_envs
 
