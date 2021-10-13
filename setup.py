@@ -1,6 +1,5 @@
 import sys
-from setuptools import setup, find_namespace_packages
-
+from setuptools import setup, find_namespace_packages, find_packages
 
 
 setup(
@@ -14,6 +13,6 @@ setup(
         "Operating System :: POSIX",
         "Operating System :: MacOS :: MacOS X",
     ],
-    packages=find_namespace_packages('gym_po', 'gym_po.*'),
+    packages=find_packages(include=['gym_po', 'gym_po.*']),
     install_requires=["gym", "numpy", "numba"],
 )
