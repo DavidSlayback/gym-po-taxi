@@ -2,7 +2,7 @@ __all__ = ['CarVecEnv', 'DiscreteActionCarVecEnv']
 import gym
 import numpy as np
 from gym import spaces
-from gym.envs.classic_control import rendering as visualize
+# from gym.envs.classic_control import rendering as visualize
 from gym.utils import seeding
 from gym.vector.utils import batch_space
 
@@ -96,113 +96,113 @@ class CarVecEnv(gym.Env):
     def _obs(self):
         return self.s
 
-    def render(self, mode='human'):
-        self._setup_view()
-
-        pos = self.s[0, 0]
-        self.cartrans.set_translation(
-            (pos - self.MIN_POS) * self.SCALE,
-            self.HEIGHT * self.SCALE,
-        )
-
-        return self.viewer.render(return_rgb_array=mode == 'rgb_array')
-
-
-    def _draw_boundary(self):
-        flagx = (
-            self.PRIEST - self.PRIEST_THRESHOLD - self.MIN_POS
-        ) * self.SCALE
-        flagy1 = self.HEIGHT * self.SCALE
-        flagy2 = flagy1 + 50
-        flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
-        self.viewer.add_geom(flagpole)
-
-        flagx = (
-            self.PRIEST + self.PRIEST_THRESHOLD - self.MIN_POS
-        ) * self.SCALE
-        flagy1 = self.HEIGHT * self.SCALE
-        flagy2 = flagy1 + 50
-        flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
-        self.viewer.add_geom(flagpole)
-
-    def _draw_flags(self):
-        # Flag Heaven
-        flagx = (self.heavens[0] - self.MIN_POS) * self.SCALE
-        flagy1 = self.HEIGHT * self.SCALE
-        flagy2 = flagy1 + 50
-        flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
-        self.viewer.add_geom(flagpole)
-        flag = visualize.FilledPolygon(
-            [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
-        )
-        flag.set_color(0., 1., 0.)
-        self.viewer.add_geom(flag)
-
-        # Flag Hell
-        flagx = (self.hells[0] - self.MIN_POS) * self.SCALE
-        flagy1 = self.HEIGHT * self.SCALE
-        flagy2 = flagy1 + 50
-        flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
-        self.viewer.add_geom(flagpole)
-        flag = visualize.FilledPolygon(
-            [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
-        )
-        flag.set_color(1.0, 0.0, 0)
-        self.viewer.add_geom(flag)
-
-        # BLUE for priest
-        flagx = (self.PRIEST - self.MIN_POS) * self.SCALE
-        flagy1 = self.HEIGHT * self.SCALE
-        flagy2 = flagy1 + 50
-        flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
-        self.viewer.add_geom(flagpole)
-        flag = visualize.FilledPolygon(
-            [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
-        )
-        flag.set_color(0.0, 0.0, 1.0)
-        self.viewer.add_geom(flag)
-
-    def _setup_view(self):
-        if not self.setup_view:
-            self.viewer = visualize.Viewer(
-                self.SCREEN_WIDTH, self.SCREEN_HEIGHT
-            )
-            xs = np.linspace(self.MIN_POS, self.MAX_POS, 100)
-            ys = np.full_like(xs, self.HEIGHT)
-            xys = list(zip((xs - self.MIN_POS) * self.SCALE, ys * self.SCALE))
-
-            self.track = visualize.make_polyline(xys)
-            self.track.set_linewidth(4)
-            self.viewer.add_geom(self.track)
-
-            clearance = 10
-            carwidth = 40
-            carheight = 20
-
-            l, r, t, b = -carwidth / 2, carwidth / 2, carheight, 0
-            car = visualize.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
-            car.add_attr(visualize.Transform(translation=(0, clearance)))
-            self.cartrans = visualize.Transform()
-            car.add_attr(self.cartrans)
-            self.viewer.add_geom(car)
-            frontwheel = visualize.make_circle(carheight / 2.5)
-            frontwheel.set_color(0.5, 0.5, 0.5)
-            frontwheel.add_attr(
-                visualize.Transform(translation=(carwidth / 4, clearance))
-            )
-            frontwheel.add_attr(self.cartrans)
-            self.viewer.add_geom(frontwheel)
-            backwheel = visualize.make_circle(carheight / 2.5)
-            backwheel.add_attr(
-                visualize.Transform(translation=(-carwidth / 4, clearance))
-            )
-            backwheel.add_attr(self.cartrans)
-            backwheel.set_color(0.5, 0.5, 0.5)
-            self.viewer.add_geom(backwheel)
-
-            self._draw_flags()
-            self._draw_boundary()
-            self.setup_view = True
+    # def render(self, mode='human'):
+    #     self._setup_view()
+    #
+    #     pos = self.s[0, 0]
+    #     self.cartrans.set_translation(
+    #         (pos - self.MIN_POS) * self.SCALE,
+    #         self.HEIGHT * self.SCALE,
+    #     )
+    #
+    #     return self.viewer.render(return_rgb_array=mode == 'rgb_array')
+    #
+    #
+    # def _draw_boundary(self):
+    #     flagx = (
+    #         self.PRIEST - self.PRIEST_THRESHOLD - self.MIN_POS
+    #     ) * self.SCALE
+    #     flagy1 = self.HEIGHT * self.SCALE
+    #     flagy2 = flagy1 + 50
+    #     flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
+    #     self.viewer.add_geom(flagpole)
+    #
+    #     flagx = (
+    #         self.PRIEST + self.PRIEST_THRESHOLD - self.MIN_POS
+    #     ) * self.SCALE
+    #     flagy1 = self.HEIGHT * self.SCALE
+    #     flagy2 = flagy1 + 50
+    #     flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
+    #     self.viewer.add_geom(flagpole)
+    #
+    # def _draw_flags(self):
+    #     # Flag Heaven
+    #     flagx = (self.heavens[0] - self.MIN_POS) * self.SCALE
+    #     flagy1 = self.HEIGHT * self.SCALE
+    #     flagy2 = flagy1 + 50
+    #     flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
+    #     self.viewer.add_geom(flagpole)
+    #     flag = visualize.FilledPolygon(
+    #         [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
+    #     )
+    #     flag.set_color(0., 1., 0.)
+    #     self.viewer.add_geom(flag)
+    #
+    #     # Flag Hell
+    #     flagx = (self.hells[0] - self.MIN_POS) * self.SCALE
+    #     flagy1 = self.HEIGHT * self.SCALE
+    #     flagy2 = flagy1 + 50
+    #     flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
+    #     self.viewer.add_geom(flagpole)
+    #     flag = visualize.FilledPolygon(
+    #         [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
+    #     )
+    #     flag.set_color(1.0, 0.0, 0)
+    #     self.viewer.add_geom(flag)
+    #
+    #     # BLUE for priest
+    #     flagx = (self.PRIEST - self.MIN_POS) * self.SCALE
+    #     flagy1 = self.HEIGHT * self.SCALE
+    #     flagy2 = flagy1 + 50
+    #     flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
+    #     self.viewer.add_geom(flagpole)
+    #     flag = visualize.FilledPolygon(
+    #         [(flagx, flagy2), (flagx, flagy2 - 10), (flagx + 25, flagy2 - 5)]
+    #     )
+    #     flag.set_color(0.0, 0.0, 1.0)
+    #     self.viewer.add_geom(flag)
+    #
+    # def _setup_view(self):
+    #     if not self.setup_view:
+    #         self.viewer = visualize.Viewer(
+    #             self.SCREEN_WIDTH, self.SCREEN_HEIGHT
+    #         )
+    #         xs = np.linspace(self.MIN_POS, self.MAX_POS, 100)
+    #         ys = np.full_like(xs, self.HEIGHT)
+    #         xys = list(zip((xs - self.MIN_POS) * self.SCALE, ys * self.SCALE))
+    #
+    #         self.track = visualize.make_polyline(xys)
+    #         self.track.set_linewidth(4)
+    #         self.viewer.add_geom(self.track)
+    #
+    #         clearance = 10
+    #         carwidth = 40
+    #         carheight = 20
+    #
+    #         l, r, t, b = -carwidth / 2, carwidth / 2, carheight, 0
+    #         car = visualize.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+    #         car.add_attr(visualize.Transform(translation=(0, clearance)))
+    #         self.cartrans = visualize.Transform()
+    #         car.add_attr(self.cartrans)
+    #         self.viewer.add_geom(car)
+    #         frontwheel = visualize.make_circle(carheight / 2.5)
+    #         frontwheel.set_color(0.5, 0.5, 0.5)
+    #         frontwheel.add_attr(
+    #             visualize.Transform(translation=(carwidth / 4, clearance))
+    #         )
+    #         frontwheel.add_attr(self.cartrans)
+    #         self.viewer.add_geom(frontwheel)
+    #         backwheel = visualize.make_circle(carheight / 2.5)
+    #         backwheel.add_attr(
+    #             visualize.Transform(translation=(-carwidth / 4, clearance))
+    #         )
+    #         backwheel.add_attr(self.cartrans)
+    #         backwheel.set_color(0.5, 0.5, 0.5)
+    #         self.viewer.add_geom(backwheel)
+    #
+    #         self._draw_flags()
+    #         self._draw_boundary()
+    #         self.setup_view = True
 
     def close(self):
         if self.viewer:
