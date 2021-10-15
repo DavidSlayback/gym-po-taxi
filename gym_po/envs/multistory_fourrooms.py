@@ -159,7 +159,7 @@ def vectorized_multinomial(selected_prob_matrix: np.ndarray, random_numbers: np.
 class MultistoryFourRoomsVecEnv(Env):
     """Discrete multistory fourrooms environment"""
     def __init__(self, num_envs: int, grid_z: int = 1, time_limit: int = 10000, seed=None,
-                 fixed_goal: int = 0, action_failure_probability: float = (1./3),
+                 fixed_goal: Union[List[int], Tuple[int, int], Tuple[int, int, int], int] = 0, action_failure_probability: float = (1./3),
                  wall_reward: float = 0., goal_z=None, agent_z=None):
         # Preliminaries
         self.num_envs = num_envs
@@ -235,7 +235,7 @@ class MultistoryFourRoomsVecEnv(Env):
             pygame.display.update()
             return img
 
-    def _convert_goal_tuple(self, goal: Union[List[int], Tuple[int], int]):
+    def _convert_goal_tuple(self, goal: Union[List[int], Tuple[int, int], Tuple[int, int, int], int]):
         if isinstance(goal, (Tuple, List)):
             # Convert tuple goals to single indices. If no z is provided, default to top floor
             if len(goal) == 2: goal = list((self.grid.shape[0]-1, *goal))
@@ -377,7 +377,7 @@ class GridMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
 
 if __name__ == "__main__":
     a = generate_flat_actions(1)
-    e = MultistoryFourRoomsVecEnv(8, 2)
+    e = MultistoryFourRoomsVecEnv(8, 2, fixed_goal=(7,9))
     o = e.reset()
     o, r, d, info = e.step(e.action_space.sample())
     for t in range(10000):
