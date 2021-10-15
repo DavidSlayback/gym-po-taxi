@@ -123,7 +123,16 @@ def generate_layout(grid_z: int = 1):
 
 def generate_flat_actions(grid_z: int = 1):
     """Generate flattened versions of actions"""
-    a = np.ravel_multi_index((ACTIONS+1).T, (grid_z, y, x)) - np.ravel_multi_index((1, 1, 1), (grid_z, y, x))
+    a = np.zeros(6, dtype=int)
+    if grid_z > 1:
+        p_a = np.ravel_multi_index(ACTIONS[[1,2,4]].T, (grid_z, y, x))
+        a[[1,2,4]] = p_a
+        a[[3, 0, 5]] = -p_a
+    else:
+        p_a = np.ravel_multi_index(ACTIONS[[1,2]].T, (grid_z, y, x))
+        a[[1,2]] = p_a
+        a[[3, 0]] = -p_a
+    # a = np.ravel_multi_index((ACTIONS+1).T, (grid_z, y, x)) - np.ravel_multi_index((1, 1, 1), (grid_z, y, x))
     a[-2] += UPSTAIR_OFFSET
     a[-1] += DOWNSTAIR_OFFSET
     return a
@@ -179,8 +188,8 @@ class MultistoryFourRoomsVecEnv(Env):
         self.flat_goal_locs = self.encode(empty_locs[:, np.isin(empty_locs[0], goal_z, True)])
         self.flat_agent_locs = self.encode(empty_locs[:, np.isin(empty_locs[0], agent_z, True)])
         # Stairs locations
-        self.upstairs = self.encode(np.column_stack([(z, *NE) for z in np.arange(grid_z-1)]))
-        self.downstairs = self.encode(np.column_stack([(z, *SW) for z in np.arange(1, grid_z)]))
+        self.upstairs = self.encode(np.column_stack([(z, *NE) for z in np.arange(grid_z-1)])) if grid_z > 1 else np.empty(())
+        self.downstairs = self.encode(np.column_stack([(z, *SW) for z in np.arange(1, grid_z)])) if grid_z > 1 else np.empty(())
 
         # Observations
         self._ns = valid_locs.shape[-1]
@@ -367,21 +376,14 @@ class GridMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
 
 
 if __name__ == "__main__":
-    e = MultistoryFourRoomsVecEnv(8, 3)
-    e2 = HansenMultistoryFourRoomsVecEnv(8,3)
-    e3 = GridMultistoryFourRoomsVecEnv(5, 8, 3)
+    a = generate_flat_actions(1)
+    e = MultistoryFourRoomsVecEnv(8, 2)
     o = e.reset()
-    o2 = e2.reset()
-    o3 = e3.reset()
     o, r, d, info = e.step(e.action_space.sample())
-    o2, r2, d2, info2 = e2.step(e2.action_space.sample())
-    o3, r3, d3, info3 = e3.step(e3.action_space.sample())
     for t in range(10000):
         o, r, d, info = e.step(e.action_space.sample())
+        if d.any(): print(r[d])
         e.render(idx=np.arange(8))
-        time.sleep(0.1)
-        o2, r2, d2, info2 = e2.step(e.action_space.sample())
-        o3, r3, d3, info3 = e3.step(e.action_space.sample())
-        assert (o2 < 255).all()
+        time.sleep(0.05)
         # print(o)
     print(3)
