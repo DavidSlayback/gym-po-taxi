@@ -155,6 +155,7 @@ class TaxiEnv(discrete.DiscreteEnv):
         return reversed(out)
 
     def render(self, mode="human"):
+        """Render this environment as text"""
         outfile = StringIO() if mode == "ansi" else sys.stdout
 
         out = self.desc.copy().tolist()
@@ -182,11 +183,7 @@ class TaxiEnv(discrete.DiscreteEnv):
         outfile.write("\n".join(["".join(row) for row in out]) + "\n")
         if self.lastaction is not None:
             outfile.write(
-                "  ({})\n".format(
-                    ["South", "North", "East", "West", "Pickup", "Dropoff"][
-                        self.lastaction
-                    ]
-                )
+                f"  ({['South', 'North', 'East', 'West', 'Pickup', 'Dropoff'][self.lastaction]})\n"
             )
         else:
             outfile.write("\n")
@@ -233,6 +230,8 @@ STATE_DISTRIBUTION /= STATE_DISTRIBUTION.sum()
 
 class TaxiVecEnv(Env):
     """Vectorized original taxi environment"""
+    metadata = {"render.modes": ["human", "ansi"]}
+
     desc = np.asarray(MAP, dtype='c')
     locs = np.array([(0, 0), (0, 4), (4, 0), (4, 3), (-1, -1)])  # R, G, Y, B, invalid
     # Scale rewards down by factor of 10
@@ -245,6 +244,7 @@ class TaxiVecEnv(Env):
         self.is_vector_env = True
         self.num_envs = num_envs
         self.time_limit = time_limit or int(1e6)
+        self.lastaction = None  # For rendering
         # down, up, right, left, pickup/dropoff (simplify action space)
         self.single_action_space = Discrete(na)
         self.action_space = batch_space(self.single_action_space, num_envs)
@@ -260,8 +260,47 @@ class TaxiVecEnv(Env):
         return seed
 
     def reset(self):
+        self.lastaction = None
         self._reset_mask(np.ones(self.num_envs, bool))
         return self._obs()
+
+    def render(self, mode="human"):
+        """Render first environment in set"""
+        outfile = StringIO() if mode == "ansi" else sys.stdout
+        out = self.desc.copy().tolist()
+        out = [[c.decode("utf-8") for c in line] for line in out]
+        taxi_row, taxi_col, pass_idx, dest_idx = decode(self.s[0])
+
+        def ul(x):
+            return "_" if x == " " else x
+
+        if pass_idx < 4:
+            out[1 + taxi_row][2 * taxi_col + 1] = utils.colorize(
+                out[1 + taxi_row][2 * taxi_col + 1], "yellow", highlight=True
+            )
+            pi, pj = self.locs[pass_idx]
+            out[1 + pi][2 * pj + 1] = utils.colorize(
+                out[1 + pi][2 * pj + 1], "blue", bold=True
+            )
+        else:  # passenger in taxi
+            out[1 + taxi_row][2 * taxi_col + 1] = utils.colorize(
+                ul(out[1 + taxi_row][2 * taxi_col + 1]), "green", highlight=True
+            )
+
+        di, dj = self.locs[dest_idx]
+        out[1 + di][2 * dj + 1] = utils.colorize(out[1 + di][2 * dj + 1], "magenta")
+        outfile.write("\n".join(["".join(row) for row in out]) + "\n")
+        if self.lastaction is not None:
+            outfile.write(
+                f"  ({['South', 'North', 'East', 'West', 'Pickup/Dropoff'][self.lastaction]})\n"
+            )
+        else:
+            outfile.write("\n")
+
+        # No need to return anything for human
+        if mode != "human":
+            with closing(outfile):
+                return outfile.getvalue()
 
     def _reset_mask(self, mask: np.ndarray):
         b = mask.sum()
@@ -290,6 +329,7 @@ class TaxiVecEnv(Env):
         done[goal_move] = True
         done[self.elapsed >= self.time_limit] = True
         self._reset_mask(done)
+        self.lastaction = actions[0] if not done[0] else None  # Last action or None if reset
         return self._obs(), rew, done, [{}] * self.num_envs
 
     def _obs(self):

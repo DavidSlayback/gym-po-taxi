@@ -161,6 +161,7 @@ class MultistoryFourRoomsVecEnv(Env):
     def __init__(self, num_envs: int, grid_z: int = 1, time_limit: int = 10000, seed=None,
                  fixed_goal: Union[List[int], Tuple[int, int], Tuple[int, int, int], int] = 0, action_failure_probability: float = (1./3),
                  wall_reward: float = 0., goal_z=None, agent_z=None):
+        metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 30}
         # Preliminaries
         self.num_envs = num_envs
         self.is_vector_env = True
