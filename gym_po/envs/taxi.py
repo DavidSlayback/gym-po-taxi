@@ -277,19 +277,20 @@ class TaxiVecEnv(Env):
         if pass_idx < 4:
             out[1 + taxi_row][2 * taxi_col + 1] = utils.colorize(
                 out[1 + taxi_row][2 * taxi_col + 1], "yellow", highlight=True
-            )
+            )  # Unfilled Taxi location highlighted in yellow (console code)
             pi, pj = self.locs[pass_idx]
             out[1 + pi][2 * pj + 1] = utils.colorize(
                 out[1 + pi][2 * pj + 1], "blue", bold=True
-            )
+            )  # Passenger index bold and in blue (if not in taxi)
         else:  # passenger in taxi
             out[1 + taxi_row][2 * taxi_col + 1] = utils.colorize(
                 ul(out[1 + taxi_row][2 * taxi_col + 1]), "green", highlight=True
-            )
+            )  # Taxi+Passenger in green highlight
 
         di, dj = self.locs[dest_idx]
-        out[1 + di][2 * dj + 1] = utils.colorize(out[1 + di][2 * dj + 1], "magenta")
-        outfile.write("\n".join(["".join(row) for row in out]) + "\n")
+        out[1 + di][2 * dj + 1] = utils.colorize(out[1 + di][2 * dj + 1], "magenta")  # Destination for this episode in magenta
+        # At this point in time, "out" is a list from top to bottom
+        outfile.write("\n".join(["".join(row) for row in out]) + "\n")  # Single string, separated by newline
         if self.lastaction is not None:
             outfile.write(
                 f"  ({['South', 'North', 'East', 'West', 'Pickup/Dropoff'][self.lastaction]})\n"

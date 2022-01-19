@@ -157,7 +157,7 @@ def vectorized_multinomial(selected_prob_matrix: np.ndarray, random_numbers: np.
 
 
 class MultistoryFourRoomsVecEnv(Env):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 15}
+    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 24}
     """Discrete multistory fourrooms environment"""
     def __init__(self, num_envs: int, grid_z: int = 1, time_limit: int = 10000, seed=None,
                  fixed_goal: Union[List[int], Tuple[int, int], Tuple[int, int, int], int] = 0, action_failure_probability: float = (1./3),

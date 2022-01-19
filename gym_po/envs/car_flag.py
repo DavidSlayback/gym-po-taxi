@@ -9,7 +9,7 @@ from gym.utils import seeding
 from gym.vector.utils import batch_space
 
 class CarVecEnv(gym.Env):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 30}
+    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 24}
     # Physics and task params
     MAX_POS = 1.1
     MIN_POS = -MAX_POS

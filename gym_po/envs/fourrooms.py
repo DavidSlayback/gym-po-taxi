@@ -86,7 +86,7 @@ def vectorized_multinomial(selected_prob_matrix: np.ndarray, random_numbers: np.
 
 
 class FourRoomsVecEnv(Env):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 30}
+    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 24}
     def __init__(self, num_envs: int, time_limit: int = 10000, seed=None,
                  fixed_goal: int = 62, action_failure_probability: float = (1./3),
                  wall_reward: float = 0.):
