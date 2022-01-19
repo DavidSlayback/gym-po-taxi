@@ -9,6 +9,7 @@ from gym.spaces import Discrete
 from gym.vector.utils import batch_space
 from gym.envs.toy_text import discrete
 import numpy as np
+from PIL import Image, ImageDraw
 
 # Base map for Taxi
 MAP = [
@@ -20,6 +21,32 @@ MAP = [
     "|Y| : |B: |",
     "+---------+",
 ]
+
+WHITE = np.array((255, 255, 255), dtype=np.uint8)  # Empty ground
+BLACK = np.array((0, 0, 0), dtype=np.uint8)  # WALLS
+YELLOW = np.array((255, 255, 0), dtype=np.uint8)  # Empty taxi
+GREEN = np.array((0, 255, 0), dtype=np.uint8)  # Full taxi
+MAGENTA = np.array((255, 0, 255), dtype=np.uint8)  # Passenger location
+TEAL = np.array((0, 128, 128), dtype=np.uint8)  # Passenger location
+GRAY = np.array((128, 128, 128), dtype=np.uint8)  # Potential passenger locations
+BLUE = np.array((0, 0, 255), dtype=np.uint8)  # Destination
+DARK_GRAY = np.array((192, 192, 192), dtype=np.uint8)
+
+MAP_TO_COLOR = {
+    b'+': WHITE,
+    b'-': WHITE,
+    b'|': WHITE,
+    b' ': BLACK,
+    b':': GRAY,
+    b'R': TEAL,
+    b'Y': TEAL,
+    b'G': TEAL,
+    b'B': TEAL,
+    b'T': YELLOW,
+    b'P': BLUE,  # Passenger waiting here
+    b'F': GREEN,  # Full taxi
+    b'D': MAGENTA  # Destination
+}
 
 class TaxiEnv(discrete.DiscreteEnv):
     """
@@ -230,7 +257,7 @@ STATE_DISTRIBUTION /= STATE_DISTRIBUTION.sum()
 
 class TaxiVecEnv(Env):
     """Vectorized original taxi environment"""
-    metadata = {"render.modes": ["human", "ansi"]}
+    metadata = {"render.modes": ["human", "rgb_array", "ansi"], "video.frames_per_second": 10}
 
     desc = np.asarray(MAP, dtype='c')
     locs = np.array([(0, 0), (0, 4), (4, 0), (4, 3), (-1, -1)])  # R, G, Y, B, invalid
@@ -266,6 +293,7 @@ class TaxiVecEnv(Env):
 
     def render(self, mode="human"):
         """Render first environment in set"""
+        if mode == 'rgb_array': return self._render_rgb()
         outfile = StringIO() if mode == "ansi" else sys.stdout
         out = self.desc.copy().tolist()
         out = [[c.decode("utf-8") for c in line] for line in out]
@@ -297,11 +325,46 @@ class TaxiVecEnv(Env):
             )
         else:
             outfile.write("\n")
+        # Note that this string contains console color codes...which don't render properly at least with pillow
+        # I would say just remove them, but I at the very least need the highlight to show up properly
 
         # No need to return anything for human
         if mode != "human":
             with closing(outfile):
                 return outfile.getvalue()
+
+    def _render_rgb(self, cell_pixel_size: int = 16):
+        out = np.array(self.desc)
+        rows, cols = out.shape
+        # out = [[c.decode("utf-8") for c in line] for line in out]
+        taxi_row, taxi_col, pass_idx, dest_idx = decode(self.s[0])
+        taxi_row_idx = taxi_row + 1
+        taxi_col_idx = 2 * taxi_col + 1
+        passenger_in_taxi = (pass_idx == 4)
+        if passenger_in_taxi:
+            out[taxi_row_idx, taxi_col_idx] = b'F'
+        else:
+            ploc = self.locs[pass_idx]
+            out[taxi_row_idx, taxi_col_idx] = b'T'
+            out[ploc[0] + 1, 2 * ploc[1] + 1] = b'P'
+        dloc = self.locs[dest_idx]
+        out[dloc[0] + 1, 2 * dloc[1] + 1] = b'D'
+        text_space = 40
+        img = np.zeros(((rows * cell_pixel_size) + text_space, cols * cell_pixel_size, 3), dtype=np.uint8)
+        text_anchor = (5, img.shape[0] - text_space + 5)
+        for r in range(rows):
+            for c in range(cols):
+                img[r*cell_pixel_size:r*cell_pixel_size+cell_pixel_size, c*cell_pixel_size:c*cell_pixel_size+cell_pixel_size] = MAP_TO_COLOR[out[r,c]]
+        # Add last action
+        text = f"  ({['South', 'North', 'East', 'West', 'Pickup/Dropoff'][self.lastaction]})\n" if self.lastaction is not None else ''
+        if text:
+            frame = Image.fromarray(img)  # Convert to Pillow image
+            dr = ImageDraw.Draw(frame)  # In-place drawing context
+            dr.text(text_anchor, text)  # Draw text
+            img = np.array(frame)
+        return img
+
+
 
     def _reset_mask(self, mask: np.ndarray):
         b = mask.sum()
@@ -313,6 +376,7 @@ class TaxiVecEnv(Env):
         self.elapsed += 1
         r, c, p, d = decode(self.s)
         r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x-1), np.clip(c + ACTIONS[actions][:, 1], 0, y-1)
+        self.lastaction = actions[0]
         tloc = np.column_stack((r, c))
         rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
         p_or_d = actions == 4  # Attempted pickup/dropoff

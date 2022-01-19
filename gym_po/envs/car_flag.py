@@ -2,8 +2,11 @@ __all__ = ['CarVecEnv', 'DiscreteActionCarVecEnv']
 import gym
 import numpy as np
 from gym import spaces
-import pyglet
-pyglet.options['headless'] = True
+import os
+if os.name != 'nt':
+    # Windows can't handle headless (missing EGL dll)
+    import pyglet
+    pyglet.options['headless'] = True
 from gym.envs.classic_control import rendering as visualize
 from gym.utils import seeding
 from gym.vector.utils import batch_space
