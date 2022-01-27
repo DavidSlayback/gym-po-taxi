@@ -14,5 +14,5 @@ setup(
         "Operating System :: MacOS :: MacOS X",
     ],
     packages=find_packages(include=['gym_po', 'gym_po.*']),
-    install_requires=["gym", "numpy", "numba"],
+    install_requires=["gym", "numpy", "numba", "pygame"],
 )
