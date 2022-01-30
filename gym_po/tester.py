@@ -3,9 +3,9 @@ from envs import *
 from gym.wrappers.record_video import RecordVideo
 
 if __name__ == "__main__":
-    # e = CarVecEnv(20, time_limit=160)
+    e = CarVecEnv(20, time_limit=160)
     # e = TaxiEnv()
-    e = HansenTaxiVecEnv(8, time_limit=200)
+    # e = HansenTaxiVecEnv(8, time_limit=200)
     # e = GridMultistoryFourRoomsVecEnv(3, 2, time_limit=1000)
     e = RecordVideo(e, video_folder='videos')
     # e = NormalizeReward(e, 0.95)

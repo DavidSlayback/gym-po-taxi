@@ -7,15 +7,20 @@ if os.name != 'nt':
     # Windows can't handle headless (missing EGL dll)
     import pyglet
     pyglet.options['headless'] = True
-from gym.envs.classic_control import rendering as visualize
+# try:
+#     from gym.envs.classic_control import rendering as visualize  # Use pyglet
+# except:
+visualize = None  # Use number line
 from gym.utils import seeding
 from gym.vector.utils import batch_space
+from functools import partial
 
 class CarVecEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     # Physics and task params
     MAX_POS = 1.1
     MIN_POS = -MAX_POS
+    POS_RANGE = MAX_POS - MIN_POS
     MAX_SPEED = 0.07
     MIN_ACT = -1.
     MAX_ACT = 1.
@@ -28,13 +33,26 @@ class CarVecEnv(gym.Env):
     SCREEN_HEIGHT = 400
     SCALE = SCREEN_WIDTH / (MAX_POS - MIN_POS)
     HEIGHT = 0.55
+    PIXEL_WIDTH = 4
+    PIXEL_HEIGHT = 24
+    START_PIXEL_RANGE = 600 - PIXEL_WIDTH
+    # START_PIXEL_BINS = np.arange(SCREEN_WIDTH - 4)  # All ints along this range as start idx
+    NLINE = np.zeros((SCREEN_WIDTH, PIXEL_HEIGHT*2, 3), dtype=np.uint8)
+    NLINE[0:PIXEL_WIDTH] = 255; NLINE[-PIXEL_WIDTH:] = 255  # Endpoints are white
+    PIXEL_CONVERSION = partial(np.interp, xp=[MIN_POS, MAX_POS], fp=[0, START_PIXEL_RANGE])
+    PIXEL_PRIEST = np.floor(PIXEL_CONVERSION([PRIEST - PRIEST_THRESHOLD, PRIEST, PRIEST + PRIEST_THRESHOLD])).astype(int)
+    NLINE[PIXEL_PRIEST[0]:PIXEL_PRIEST[0] + PIXEL_WIDTH, :, 2] = 128
+    NLINE[PIXEL_PRIEST[2]:PIXEL_PRIEST[2] + PIXEL_WIDTH, :, 2] = 128
+    NLINE[PIXEL_PRIEST[1]:PIXEL_PRIEST[1] + PIXEL_WIDTH, :, 2] = 255
+    NLINE = NLINE.swapaxes(0,1)
+    PIXEL_FLAGS = np.floor(PIXEL_CONVERSION([-1, 1])).astype(int)
 
     def __init__(
         self,
         num_envs: int,
         time_limit: int = 160,
         seed=0,
-        rendering=False,
+        # rendering=False,
     ):
         self.num_envs = num_envs
         self.is_vector_env = True
@@ -49,7 +67,7 @@ class CarVecEnv(gym.Env):
 
         self.setup_view = False
         self.viewer = None
-        self.show = rendering
+        # self.show = rendering
 
         self.seed(seed)
         self.s = np.zeros((self.num_envs, 3), dtype=np.float32)
@@ -57,6 +75,7 @@ class CarVecEnv(gym.Env):
         self.elapsed = np.zeros(self.num_envs, dtype=int)
         self.heavens = np.ones(self.num_envs, dtype=np.float32)
         self.hells = -self.heavens
+
 
     def seed(self, seed=None):
         self.rng, seed = seeding.np_random(seed)
@@ -94,8 +113,8 @@ class CarVecEnv(gym.Env):
         directions[directions == 1] = self.heavens[directions == 1]
         self.s[~dones] = np.column_stack((new_position[~dones], new_velocity[~dones], directions[~dones]))
         self._reset_mask(dones)
-        if self.show:
-            self.render()
+        # if self.show:
+        #     self.render()
 
         return self._obs(), rewards, dones, [{}] * self.num_envs
 
@@ -103,15 +122,34 @@ class CarVecEnv(gym.Env):
         return self.s
 
     def render(self, mode='human'):
-        self._setup_view()
-
-        pos = self.s[0, 0]
-        self.cartrans.set_translation(
-            (pos - self.MIN_POS) * self.SCALE,
-            self.HEIGHT * self.SCALE,
-        )
-
-        return self.viewer.render(return_rgb_array=mode == 'rgb_array')
+        if visualize is not None:  # Standard classic control rendering
+            self._setup_view()
+            pos = self.s[0, 0]
+            self.cartrans.set_translation(
+                (pos - self.MIN_POS) * self.SCALE,
+                self.HEIGHT * self.SCALE,
+            )
+            return self.viewer.render(return_rgb_array=mode == 'rgb_array')
+        else:
+            pos = self.s[0, 0]  # Get float position
+            pixel_pos = np.floor(self.PIXEL_CONVERSION(pos)).astype(int)
+            img = self.NLINE.copy()  # new img
+            hea_idx = 0 if self.heavens[0] <0 else 1; hell_idx = 1-hea_idx
+            hea_pos, hell_pos = self.PIXEL_FLAGS[hea_idx], self.PIXEL_FLAGS[hell_idx]
+            img[:,hea_pos:hea_pos+4,1] = 255
+            img[:, hell_pos:hell_pos+4, 0] = 255
+            img[-self.PIXEL_HEIGHT:,pixel_pos:pixel_pos+4] = 128
+            if mode == 'rgb' or mode == 'rgb_array':
+                return img
+            else:
+                import pygame
+                if self.viewer is None:
+                    pygame.init()
+                    self.viewer = pygame.display.set_mode(img.shape[:-1])
+                sfc = pygame.surfarray.make_surface(img)
+                self.viewer.blit(sfc, (0, 0))
+                pygame.display.update()
+                return img
 
 
     def _draw_boundary(self):
