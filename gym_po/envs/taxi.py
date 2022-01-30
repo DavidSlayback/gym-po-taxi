@@ -24,12 +24,12 @@ MAP = [
 
 WHITE = np.array((255, 255, 255), dtype=np.uint8)  # Empty ground
 BLACK = np.array((0, 0, 0), dtype=np.uint8)  # WALLS
-YELLOW = np.array((255, 255, 0), dtype=np.uint8)  # Empty taxi
-GREEN = np.array((0, 255, 0), dtype=np.uint8)  # Full taxi
+YELLOW = np.array((128, 128, 0), dtype=np.uint8)  # Empty taxi
+GREEN = np.array((0, 128, 0), dtype=np.uint8)  # Full taxi
 MAGENTA = np.array((255, 0, 255), dtype=np.uint8)  # Passenger location
 TEAL = np.array((0, 128, 128), dtype=np.uint8)  # Passenger location
 GRAY = np.array((128, 128, 128), dtype=np.uint8)  # Potential passenger locations
-BLUE = np.array((0, 0, 255), dtype=np.uint8)  # Destination
+BLUE = np.array((0, 0, 128), dtype=np.uint8)  # Destination
 DARK_GRAY = np.array((192, 192, 192), dtype=np.uint8)
 
 MAP_TO_COLOR = {
