@@ -7,10 +7,10 @@ if os.name != 'nt':
     # Windows can't handle headless (missing EGL dll)
     import pyglet
     pyglet.options['headless'] = True
-try:
-    from gym.envs.classic_control import rendering as visualize  # Use pyglet
-except:
-    visualize = None  # Use number line
+# try:
+#     from gym.envs.classic_control import rendering as visualize  # Use pyglet
+# except:
+visualize = None  # Use number line
 from gym.utils import seeding
 from gym.vector.utils import batch_space
 from functools import partial
