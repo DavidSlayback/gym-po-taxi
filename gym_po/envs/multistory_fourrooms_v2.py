@@ -15,10 +15,10 @@ from gym.vector.utils import batch_space
 class GR_CNST(IntEnum):
     wall = auto()
     empty = auto()
+    goal = auto()
     stair_up = auto()
     stair_down = auto()
     agent = auto()
-    goal = auto()
 
 FR_COLOR_MAP = {
     GR_CNST.wall: np.array([0,0,0], dtype=np.uint8),
@@ -59,7 +59,7 @@ def gen_layout(base_grid: np.ndarray = FR_LAYOUT_NP, grid_z: int = 1):
     if not (grid_z - 1): return base_grid.copy()[None, ...], NE, SW  # Just add z dim
     bfloor, mfloor, tfloor = (base_grid.copy() for _ in range(3))
     bfloor[NE] = GR_CNST.stair_up; tfloor[SW] = GR_CNST.stair_down; mfloor[SW] = GR_CNST.stair_down; mfloor[NE] = GR_CNST.stair_up
-    return np.stack((bfloor, *(mfloor.copy() for _ in range(grid_z - 2)), tfloor), axis=0), NE, SW  # Stack on z-dim
+    return np.stack((bfloor, *(mfloor.copy() for _ in range(grid_z - 2)), tfloor), axis=0), np.array(NE), np.array(SW)  # Stack on z-dim
 
 def grid_to_render_coordinates(yx_coords: np.ndarray, cell_pixel_size: int = 16):
     """Convert grid coordinates (e.g. 0-12 in 13x13) to render coordinates (0-208)"""
@@ -100,6 +100,20 @@ def add_agent_and_goal_to_render(render_map: np.ndarray, ayx_coord: np.ndarray, 
     if gyx_coord is not None: m[tuple(grid_to_render_coordinates(ayx_coord))] = FR_COLOR_MAP[GR_CNST.agent]
     m[tuple(grid_to_render_coordinates(gyx_coord))] = FR_COLOR_MAP[GR_CNST.goal]
     return m
+
+def lighten(color_or_cell: np.ndarray, amount: int = 64, in_place: bool = True, saturate: bool = False):
+    """Highlight a color. Could also darken it"""
+    mask = color_or_cell > 0 if not saturate else color_or_cell >= 0
+    if in_place:
+        color_or_cell[mask] = np.clip(color_or_cell[mask].astype('int') + amount, 0, 255)
+        return color_or_cell
+    else:
+        new_color = color_or_cell.copy()
+        new_color[mask] = np.clip(color_or_cell[mask].astype('int') + amount, 0, 255)
+        return new_color
+
+def highlight_render(render_map: np.ndarray, hyx_coord: np.ndarray):
+    render_map[tuple(hyx_coord)] = lighten(render_map[tuple(hyx_coord)])
 
 # Action stuff
 def action_probability_matrix(action_failure_probability: float = (1./3), action_n: int = 4):
@@ -162,6 +176,7 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         self.fcoord_to_ecoord = np.isin(np.arange(self.grid.size), self.flat_valid_locs, True).cumsum() - 1  # To discrete
         self.time_limit = time_limit
         self._viewer = None
+        self._l_idx = None  # Highlight these next time render comes up
 
         self.seed(seed)
         if fixed_goal:
@@ -183,6 +198,7 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         elif self.grid_z > 2 and z != 0 and azyx_coord[0] != self.grid_z - 1: m = self.render_maps[2]
         else: m = self.render_maps[0]
         img = add_agent_and_goal_to_render(m, azyx_coord[1:], gzyx_coord[1:] if z == gzyx_coord[0] else None)
+        if self._l_idx is not None: highlight_render(img, self._l_idx.reshape(2, -1, self.num_envs)[...,0])
         if mode == 'rgb' or mode == 'rgb_array': return img
         else:
             import pygame
@@ -237,7 +253,7 @@ class MultistoryFourRoomsVecEnv(gym.Env):
 
 
 
-multipliers = np.array([1, 4, 16, 64])
+multipliers = np.array([1, 4, 16, 64])[:,None]  # Multipliers for observation space, 4 grid squares and 5 types of observations. Could alias stairs
 class HansenMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
     """Use Hansen taxi-style observations (only immediately adjacent walls, goals, and stairs)"""
     def __init__(self, *args, **kwargs):
@@ -245,16 +261,23 @@ class HansenMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
         self._ns = (multipliers * 3).sum()+1
         self.single_observation_space = Discrete(self._ns)
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
+        self.add_actions = np.tile(self.actions.T, (1, self.num_envs))  # This represents adding each action to agent coordinates
 
     def hansen_encode(self):
-        adj_idx = self.agent[1:] + np.tile(self.actions.T[:, None, :], (1, self.num_envs, 1))
-        # adj = self.agent[..., None] + self.actions[:-2]
-        g = self.grid[tuple(adj_idx)]  # Comes with stairs, empty, walls
-        g[self.goal[..., None] == adj_idx] = GR_CNST.goal  # Fill in goals
-        return (g * multipliers).sum(-1)
+        # self.agent[1:] = self.rng.randint(1, 12, self.num_envs)
+        # self.grid[0, :, :] = np.arange(169).reshape((13,13))
+        a = np.repeat(self.agent, self.single_action_space.n, axis=-1)  # Each agent coordinates is repeated "action" times
+        a[1:] += self.add_actions  # Add each action to each agent's yx coordinates
+        g = self.grid[tuple(a)]  # Get the values in the actual grid squares, reduce by 1
+        g[g == GR_CNST.stair_down] = GR_CNST.stair_up  # Alias stairs
+        g[(np.repeat(self.goal, self.single_action_space.n, axis=-1) == a).all(0)] = GR_CNST.goal  # Fill in goals
+        g -= 1  # 0-index
+        g = g.reshape(-1, self.num_envs)  # Reshape to action-first (4x16 from 64,)
+        return (g * multipliers).sum(-1), a[1:]  # a is still 2x64
 
     def _obs(self):
-        return self.hansen_encode()
+        o, self._l_idx = self.hansen_encode()
+        return o
 
 class GridMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
     """Use nxn observations around agent"""
@@ -263,7 +286,7 @@ class GridMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
         assert (obs_n % 2) == 1
         self.o_shape = (obs_n, obs_n)
         o_min = 0
-        o_max = GOAL
+        o_max = GR_CNST.goal
         self.single_observation_space = Box(o_min, o_max, self.o_shape, dtype=int)
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
         # Agent view offset
@@ -313,4 +336,6 @@ o = test.reset()
 a = test.render()
 for t in range (100):
     o, r, d, info = test.step(test.action_space.sample())
+    test.render()
+    time.sleep(0.2)
 print(o)
