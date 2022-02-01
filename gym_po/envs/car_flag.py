@@ -39,13 +39,7 @@ class CarVecEnv(gym.Env):
     # START_PIXEL_BINS = np.arange(SCREEN_WIDTH - 4)  # All ints along this range as start idx
     NLINE = np.zeros((SCREEN_WIDTH, PIXEL_HEIGHT*2, 3), dtype=np.uint8)
     NLINE[0:PIXEL_WIDTH] = 255; NLINE[-PIXEL_WIDTH:] = 255  # Endpoints are white
-    PIXEL_CONVERSION = partial(np.interp, xp=[MIN_POS, MAX_POS], fp=[0, START_PIXEL_RANGE])
-    PIXEL_PRIEST = np.floor(PIXEL_CONVERSION([PRIEST - PRIEST_THRESHOLD, PRIEST, PRIEST + PRIEST_THRESHOLD])).astype(int)
-    NLINE[PIXEL_PRIEST[0]:PIXEL_PRIEST[0] + PIXEL_WIDTH, :, 2] = 128
-    NLINE[PIXEL_PRIEST[2]:PIXEL_PRIEST[2] + PIXEL_WIDTH, :, 2] = 128
-    NLINE[PIXEL_PRIEST[1]:PIXEL_PRIEST[1] + PIXEL_WIDTH, :, 2] = 255
     NLINE = NLINE.swapaxes(0,1)
-    PIXEL_FLAGS = np.floor(PIXEL_CONVERSION([-1, 1])).astype(int)
 
     def __init__(
         self,
@@ -74,7 +68,13 @@ class CarVecEnv(gym.Env):
         self.time_limit = time_limit
         self.elapsed = np.zeros(self.num_envs, dtype=int)
         self.heavens = np.ones(self.num_envs, dtype=np.float32)
+        self.priests = np.full(self.num_envs, self.PRIEST)
         self.hells = -self.heavens
+
+        self.pixel_conversion = lambda x: np.floor(np.interp(x,
+                                        xp=[self.MIN_POS, self.MAX_POS],
+                                        fp=[0, self.START_PIXEL_RANGE])).astype(int)
+        self.PIXEL_FLAGS = self.pixel_conversion([-1, 1])
 
 
     def seed(self, seed=None):
@@ -92,6 +92,7 @@ class CarVecEnv(gym.Env):
             self.elapsed[mask] = 0
             self.heavens[mask] = self.rng.choice([-1, 1], b)
             self.hells[mask] = -self.heavens[mask]
+            self.priests[mask] = self.rng.choice([-self.PRIEST, self.PRIEST], b)
             if mask[0] & (self.viewer is not None): self._draw_flags()  # Redraw flags if we sampled 0 index
 
     def step(self, actions: np.ndarray):
@@ -108,9 +109,9 @@ class CarVecEnv(gym.Env):
         rewards[(hh == self.heavens) & dones] = 1.
         rewards[(hh == self.hells) & dones] = -1.
         dones |= (self.elapsed >= self.time_limit)
-        directions = np.where((new_position >= self.PRIEST - self.PRIEST_THRESHOLD) &
-                               (new_position <= self.PRIEST + self.PRIEST_THRESHOLD), 1., 0.)
-        directions[directions == 1] = self.heavens[directions == 1]
+        directions = np.where((new_position >= self.priests - self.PRIEST_THRESHOLD) &
+                               (new_position <= self.priests + self.PRIEST_THRESHOLD), self.heavens, 0.)
+        # directions[directions == 1] = self.heavens[directions == 1]
         self.s[~dones] = np.column_stack((new_position[~dones], new_velocity[~dones], directions[~dones]))
         self._reset_mask(dones)
         # if self.show:
@@ -132,13 +133,19 @@ class CarVecEnv(gym.Env):
             return self.viewer.render(return_rgb_array=mode == 'rgb_array')
         else:
             pos = self.s[0, 0]  # Get float position
-            pixel_pos = np.floor(self.PIXEL_CONVERSION(pos)).astype(int)
+            pixel_pos = self.pixel_conversion(pos)
+            priest_poses = self.pixel_conversion([self.priests[0] - self.PRIEST_THRESHOLD,
+                                                  self.priests[0],
+                                                  self.priests[0] + self.PRIEST_THRESHOLD])
             img = self.NLINE.copy()  # new img
-            hea_idx = 0 if self.heavens[0] <0 else 1; hell_idx = 1-hea_idx
+            hea_idx = 0 if self.heavens[0] < 0 else 1; hell_idx = 1-hea_idx
             hea_pos, hell_pos = self.PIXEL_FLAGS[hea_idx], self.PIXEL_FLAGS[hell_idx]
             img[:,hea_pos:hea_pos+4,1] = 255
             img[:, hell_pos:hell_pos+4, 0] = 255
-            img[-self.PIXEL_HEIGHT:,pixel_pos:pixel_pos+4] = 128
+            img[-self.PIXEL_HEIGHT:,pixel_pos:pixel_pos+4] = 255 if self.s[0, -1] else 128
+            img[:, priest_poses[0]:priest_poses[0] + self.PIXEL_WIDTH, 2] = 128
+            img[:, priest_poses[2]:priest_poses[2] + self.PIXEL_WIDTH, 2] = 128
+            img[:, priest_poses[1]:priest_poses[1] + self.PIXEL_WIDTH, 2] = 255
             if mode == 'rgb' or mode == 'rgb_array':
                 return img
             else:
@@ -154,7 +161,7 @@ class CarVecEnv(gym.Env):
 
     def _draw_boundary(self):
         flagx = (
-            self.PRIEST - self.PRIEST_THRESHOLD - self.MIN_POS
+            self.priests[0] - self.PRIEST_THRESHOLD - self.MIN_POS
         ) * self.SCALE
         flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
@@ -162,7 +169,7 @@ class CarVecEnv(gym.Env):
         self.viewer.add_geom(flagpole)
 
         flagx = (
-            self.PRIEST + self.PRIEST_THRESHOLD - self.MIN_POS
+            self.priests[0] + self.PRIEST_THRESHOLD - self.MIN_POS
         ) * self.SCALE
         flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
@@ -195,7 +202,7 @@ class CarVecEnv(gym.Env):
         self.viewer.add_geom(flag)
 
         # BLUE for priest
-        flagx = (self.PRIEST - self.MIN_POS) * self.SCALE
+        flagx = (self.priests[0] - self.MIN_POS) * self.SCALE
         flagy1 = self.HEIGHT * self.SCALE
         flagy2 = flagy1 + 50
         flagpole = visualize.Line((flagx, flagy1), (flagx, flagy2))
