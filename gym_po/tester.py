@@ -1,3 +1,5 @@
+import time
+
 from wrappers import RecordEpisodeStatistics, NormalizeReward
 from envs import *
 from gym.wrappers.record_video import RecordVideo
@@ -14,8 +16,10 @@ if __name__ == "__main__":
     o = e.reset()
     # on = e.single_observation_space.n
     # assert (o <= on).all()
-    for t in range(100000):
+    for t in range(10000):
         o, r, d, info = e.step(e.action_space.sample())
+        # e.render()
+        # time.sleep(0.2)
         # if d.any(): print(info)
         # assert (o <= on).all()
     e.close()

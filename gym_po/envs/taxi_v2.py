@@ -50,8 +50,8 @@ for i, wall in enumerate(RENDER_COL_WALL_START_IDX):
     if i == 3: RENDER_MAP[:, wall:wall+WALL_PX] = DARK_GRAY
     else:
         RENDER_MAP[:,wall:wall+WALL_PX] = BLACK
-        if i in (0,2): RENDER_MAP[3*CELL_PX:, wall:wall+WALL_PX,] = DARK_GRAY
-        else: RENDER_MAP[:-3*CELL_PX, wall:wall+WALL_PX] = DARK_GRAY
+        if i in (0,2): RENDER_MAP[:3*CELL_PX, wall:wall+WALL_PX,] = DARK_GRAY
+        else: RENDER_MAP[-3*CELL_PX:, wall:wall+WALL_PX] = DARK_GRAY
 RENDER_LOCS = []
 NP_LOCS = [(0,0), (0,4), (4,0), (4,3)]
 for i, row in enumerate(RENDER_ROW_START_IDX):
@@ -59,9 +59,6 @@ for i, row in enumerate(RENDER_ROW_START_IDX):
         if (i, j) in NP_LOCS:
             RENDER_LOCS.append(tuple(np.mgrid[:CELL_PX, :CELL_PX] + np.array([row, col], dtype=int)[:, None, None]))
             RENDER_MAP[RENDER_LOCS[-1]] = GRAY
-from PIL import Image
-im = Image.fromarray(cv2.copyMakeBorder(RENDER_MAP, WALL_PX,WALL_PX,WALL_PX, WALL_PX, cv2.BORDER_CONSTANT, 0))
-im.save('test.png')
 
 
 MAP_TO_COLOR = {
@@ -289,7 +286,7 @@ STATE_DISTRIBUTION /= STATE_DISTRIBUTION.sum()
 
 class TaxiVecEnv(Env):
     """Vectorized original taxi environment"""
-    metadata = {"render.modes": ["human", "rgb_array", "ansi"], "video.frames_per_second": 10}
+    metadata = {"render.modes": ["human", "rgb_array", "ansi"], "video.frames_per_second": 5}
 
     desc = NP_MAP
     locs = np.array([(0, 0), (0, 4), (4, 0), (4, 3), (-1, -1)])  # R, G, Y, B, invalid
@@ -405,7 +402,10 @@ class TaxiVecEnv(Env):
     def step(self, actions):
         self.elapsed += 1
         r, c, p, d = decode(self.s)
-        r, c = np.clip(r + ACTIONS[actions][:, 0], 0, x-1), np.clip(c + ACTIONS[actions][:, 1], 0, y-1)
+        r, cnew = np.clip(r + ACTIONS[actions][:, 0], 0, x-1), np.clip(c + ACTIONS[actions][:, 1], 0, y-1)
+        desc_c_idx = 2 * c + (2 * ((cnew - c) > 0))
+        no_collision = self.desc[1+r, desc_c_idx] == ':'  # Can't move through walls (2*c will pick up to our left,
+        c[no_collision] = cnew[no_collision]
         self.lastaction = actions[0]
         tloc = np.column_stack((r, c))
         rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
