@@ -11,7 +11,8 @@ import numpy as np
 from gym.spaces import Discrete, Box
 from gym.vector.utils import batch_space
 
-
+YXMASK = np.array([False, True, True])
+ZMASK = np.array([True, False, False])
 class GR_CNST(IntEnum):
     wall = auto()
     empty = auto()
@@ -56,7 +57,7 @@ def gen_layout(base_grid: np.ndarray = FR_LAYOUT_NP, grid_z: int = 1):
     y, x = base_grid.shape
     NE = (1, x - 2)
     SW = (y - 2, 1)  # Generate floors with stairs
-    if not (grid_z - 1): return base_grid.copy()[None, ...], NE, SW  # Just add z dim
+    if not (grid_z - 1): return base_grid.copy()[None, ...], np.array(NE), np.array(SW)  # Just add z dim
     bfloor, mfloor, tfloor = (base_grid.copy() for _ in range(3))
     bfloor[NE] = GR_CNST.stair_up; tfloor[SW] = GR_CNST.stair_down; mfloor[SW] = GR_CNST.stair_down; mfloor[NE] = GR_CNST.stair_up
     return np.stack((bfloor, *(mfloor.copy() for _ in range(grid_z - 2)), tfloor), axis=0), np.array(NE), np.array(SW)  # Stack on z-dim
@@ -66,7 +67,7 @@ def grid_to_render_coordinates(yx_coords: np.ndarray, cell_pixel_size: int = 16)
     if yx_coords.ndim == 1:
         return np.mgrid[:cell_pixel_size, :cell_pixel_size] + (yx_coords * cell_pixel_size)[...,None,None]
     else:  # Multiple coordinates
-        return np.mgrid[:cell_pixel_size, :cell_pixel_size][None,...] + (yx_coords.T * cell_pixel_size)[..., None, None]
+        return np.mgrid[:cell_pixel_size, :cell_pixel_size][None, ...] + (yx_coords.T * cell_pixel_size)[..., None, None]
 
 def grid_to_many_render_coordinates(myx_coords: np.ndarray, cell_pixel_size: int = 16):
     """Convert many grid coordinates (e.g. 0-12 in 13x13) to render coordinates (0-208)"""
@@ -113,7 +114,9 @@ def lighten(color_or_cell: np.ndarray, amount: int = 64, in_place: bool = True, 
         return new_color
 
 def highlight_render(render_map: np.ndarray, hyx_coord: np.ndarray):
-    render_map[tuple(hyx_coord)] = lighten(render_map[tuple(hyx_coord)])
+    render_coords = grid_to_render_coordinates(hyx_coord)
+    # render_map[tuple(render_coords)] = lighten(render_map[tuple(render_coords)])
+    return render_map
 
 # Action stuff
 def action_probability_matrix(action_failure_probability: float = (1./3), action_n: int = 4):
@@ -155,6 +158,8 @@ class MultistoryFourRoomsVecEnv(gym.Env):
 
         # Grid
         self.grid, self.ne, self.sw = gen_layout(grid_z=grid_z)  # FR Layout
+        self.us = np.concatenate((np.array([1], dtype=int), self.sw - self.ne), axis=0)[:, None]
+        self.ds = -self.us
         y,x = self.grid.shape[1:]
         self.grid_z = grid_z
         empty_locs = np.array((self.grid == GR_CNST.empty).nonzero())  # Where can things spawn
@@ -234,11 +239,11 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         new_loc = self.agent.copy(); new_loc[1:, :] += self.actions[a].T  # Move
         moved, go_upstairs, go_downstairs = self._check_bounds_and_stairs(new_loc)  # Ensure bounds, check stairs
         new_loc[:, ~moved] = self.agent[:, ~moved]  # Revert moves that are out of bounds
-        new_loc[1:, go_upstairs] = self.sw  # Go upstairs, start in sw corner
-        new_loc[1:, go_downstairs] = self.ne  # Go downstairs, start in ne corner
-        self.agent[:] = new_loc  # Actuall move agent
+        new_loc[:, go_upstairs] += self.us # Go upstairs, start in sw corner
+        new_loc[:, go_downstairs] += self.ds # Go downstairs, start in ne corner
+        self.agent[:] = new_loc  # Actually move agent
         r = np.zeros(self.num_envs, dtype=np.float32)
-        d = (self.agent == self.goal)  # Done where we reached goal
+        d = (self.agent == self.goal).all(0)  # Done where we reached goal
         r[d] = 1.
         r[~moved] = self.wall_reward  # Potentially penalize hitting walls
         d |= self.elapsed >= self.time_limit  # Also done where we're out of time
