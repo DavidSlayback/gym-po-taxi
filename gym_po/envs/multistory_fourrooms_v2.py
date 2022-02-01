@@ -6,10 +6,9 @@ from typing import List, Optional, Union, Tuple
 import gym
 from gym.utils.seeding import np_random
 import numpy as np
-import cv2
 
 # Grid values for different squares
-from gym.spaces import Discrete
+from gym.spaces import Discrete, Box
 from gym.vector.utils import batch_space
 
 
@@ -120,10 +119,10 @@ def vectorized_multinomial(selected_prob_matrix: np.ndarray, random_numbers: np.
     s = selected_prob_matrix.cumsum(axis=1)  # Sum over p dim for accumulated probability
     return (s < np.expand_dims(random_numbers, axis=-1)).sum(axis=1)  # Returns first index where random number < accumulated probability
 
-class MultistoryFourRoomsEnv(gym.Env):
+class MultistoryFourRoomsVecEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     """Discrete multistory fourrooms environment"""
-    def __init__(self, num_envs: int, grid_z: int = 1, time_limit: int = 10000, seed=None,
+    def __init__(self, num_envs: int, grid_z: int = 1, time_limit: int = 1000, seed=None,
                  fixed_goal: Union[Tuple[int, int, int], int] = 0, action_failure_probability: float = (1./3),
                  wall_reward: float = 0., goal_z=None, agent_z=None):
         # Preliminaries
@@ -150,9 +149,10 @@ class MultistoryFourRoomsEnv(gym.Env):
         self.decode = lambda i: np.unravel_index(i, (grid_z, y, x))
         self.flat_empty_locs = self.encode(empty_locs)
         self.flat_valid_locs = self.encode(valid_locs)
-        self.goal_locs = empty_locs[:, np.isin(empty_locs[0], goal_z, True)].T
-        self.agent_locs = empty_locs[:, np.isin(empty_locs[0], agent_z, True)].T
+        self.goal_locs = empty_locs[:, np.isin(empty_locs[0], goal_z, True)]
+        self.agent_locs = empty_locs[:, np.isin(empty_locs[0], agent_z, True)]
         self.actions = np.array([[-1, 0], [1, 0], [0, -1], [0, 1]])  # Up, down, left, right
+        self.action_names = {'UP', 'DOWN', 'LEFT', 'RIGHT'}
         self.render_maps = gen_base_render_layout(self.grid)  # Render maps for speed
 
         # Observations
@@ -166,9 +166,9 @@ class MultistoryFourRoomsEnv(gym.Env):
         self.seed(seed)
         if fixed_goal:
             self.goal_fn = lambda b: fixed_goal
-        else: self.goal_fn = lambda b: self.goal_locs[self.rng.randint(len(self.goal_locs), size=b, dtype=np.int64)]
-        self.agent = np.ones((num_envs, 3), int)  # zyx coordinates of each agent
-        self.goal = np.ones((num_envs, 3), int)  # zyx coordinates of each goal
+        else: self.goal_fn = lambda b: self.goal_locs[:, self.rng.randint(len(self.goal_locs), size=b, dtype=np.int64)]
+        self.agent = np.ones((3, num_envs), int)  # zyx coordinates of each agent
+        self.goal = np.ones((3, num_envs), int)  # zyx coordinates of each goal
         self.elapsed = np.zeros((num_envs,), int)  # Steps in each env
 
     def seed(self, seed: Optional[int] = None):
@@ -176,9 +176,9 @@ class MultistoryFourRoomsEnv(gym.Env):
         return seed
 
     def render(self, mode="human"):
-        azyx_coord = self.agent[0]  # First agent
+        azyx_coord = self.agent[:, 0]  # First agent
         z = azyx_coord[0]
-        gzyx_coord = self.goal[0]
+        gzyx_coord = self.goal[:, 0]
         if self.grid_z == 2 and z == 1: m = self.render_maps[1]
         elif self.grid_z > 2 and z != 0 and azyx_coord[0] != self.grid_z - 1: m = self.render_maps[2]
         else: m = self.render_maps[0]
@@ -201,18 +201,116 @@ class MultistoryFourRoomsEnv(gym.Env):
     def _reset_mask(self, mask: np.ndarray):
         b = mask.sum()
         if b:
-            self.goal[mask] = self.goal_fn(b)
+            self.goal[:, mask] = self.goal_fn(b)
             # Make sure agent doesn't start on goal
-            self.agent[mask] = self.agent_locs[self.rng.randint(len(self.agent_locs), size=b, dtype=np.int64)]
-            while (m := mask & (self.agent == self.goal).all(-1)).any():
-                self.agent[m] = self.agent_locs[self.rng.randint(len(self.agent_locs), size=m.sum(), dtype=np.int64)]
+            self.agent[:, mask] = self.agent_locs[:, self.rng.randint(len(self.agent_locs), size=b, dtype=np.int64)]
+            while (m := mask & (self.agent == self.goal).all(0)).any():
+                self.agent[:, m] = self.agent_locs[:, self.rng.randint(len(self.agent_locs), size=m.sum(), dtype=np.int64)]
             self.elapsed[mask] = 0
 
     def _obs(self):
-        return self.fcoord_to_ecoord[self.encode(self.agent.T)]
+        return self.fcoord_to_ecoord[self.encode(self.agent)]
+
+    def step(self, actions: np.ndarray):
+        self.elapsed += 1
+        rnd = self.rng.random(self.num_envs)
+        a = vectorized_multinomial(self.aprob_with_failure[np.array(actions)], rnd)  # Sample action failures
+        new_loc = self.agent.copy(); new_loc[1:, :] += self.actions[a].T  # Move
+        moved, go_upstairs, go_downstairs = self._check_bounds_and_stairs(new_loc)  # Ensure bounds, check stairs
+        new_loc[:, ~moved] = self.agent[:, ~moved]  # Revert moves that are out of bounds
+        new_loc[1:, go_upstairs] = self.sw  # Go upstairs, start in sw corner
+        new_loc[1:, go_downstairs] = self.ne  # Go downstairs, start in ne corner
+        self.agent[:] = new_loc  # Actuall move agent
+        r = np.zeros(self.num_envs, dtype=np.float32)
+        d = (self.agent == self.goal)  # Done where we reached goal
+        r[d] = 1.
+        r[~moved] = self.wall_reward  # Potentially penalize hitting walls
+        d |= self.elapsed >= self.time_limit  # Also done where we're out of time
+        self._reset_mask(d)
+        return self._obs(), r, d, [{}] * self.num_envs
+
+    def _check_bounds_and_stairs(self, proposed_zyx_locations: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return (self.grid[tuple(proposed_zyx_locations)] != GR_CNST.wall,
+                self.grid[tuple(proposed_zyx_locations)] == GR_CNST.stair_up,
+                self.grid[tuple(proposed_zyx_locations)] == GR_CNST.stair_down)
 
 
-test = MultistoryFourRoomsEnv(16)
+
+
+multipliers = np.array([1, 4, 16, 64])
+class HansenMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
+    """Use Hansen taxi-style observations (only immediately adjacent walls, goals, and stairs)"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._ns = (multipliers * 3).sum()+1
+        self.single_observation_space = Discrete(self._ns)
+        self.observation_space = batch_space(self.single_observation_space, self.num_envs)
+
+    def hansen_encode(self):
+        adj_idx = self.agent[1:] + np.tile(self.actions.T[:, None, :], (1, self.num_envs, 1))
+        # adj = self.agent[..., None] + self.actions[:-2]
+        g = self.grid[tuple(adj_idx)]  # Comes with stairs, empty, walls
+        g[self.goal[..., None] == adj_idx] = GR_CNST.goal  # Fill in goals
+        return (g * multipliers).sum(-1)
+
+    def _obs(self):
+        return self.hansen_encode()
+
+class GridMultistoryFourRoomsVecEnv(MultistoryFourRoomsVecEnv):
+    """Use nxn observations around agent"""
+    def __init__(self, obs_n: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        assert (obs_n % 2) == 1
+        self.o_shape = (obs_n, obs_n)
+        o_min = 0
+        o_max = GOAL
+        self.single_observation_space = Box(o_min, o_max, self.o_shape, dtype=int)
+        self.observation_space = batch_space(self.single_observation_space, self.num_envs)
+        # Agent view offset
+        self._offset = obs_n // 2
+        self._f_offset = self.grid.shape[-2] * self.grid.shape[-1]
+        v = np.mgrid[:1, :obs_n, :obs_n]
+        self.view = (self.encode(v) - self.encode([0, self._offset, self._offset]))[0]
+
+    def _obs(self):
+        floors, _, _ = self.decode(self.agent)
+        floors = floors[..., None, None]
+        f_min = floors * self._f_offset
+        f_max = np.minimum(f_min + self._f_offset, self.grid.size)
+        av = self.view + self.agent[..., None, None]  # Add offset to get agent view indices
+        # av[(av < 0) | (av >= self.grid.size)] = 0  # Out-of-bounds are walls
+        av[(av < f_min) | (av >= f_max)] = 0  # Out-of-floor are walls (retrieved as grid_idx 0)
+        goal_idx = self.goal[..., None, None] == av  # Fill in the goal
+        # av[()]
+        o = self.grid_flat[av]  # Walls everywhere we won't see. Note that our agent CAN see through walls
+        o[goal_idx] = GR_CNST.goal
+        return o
+
+    def render(self, mode='human', idx: np.ndarray = np.array([0], dtype=np.int64),
+               cell_pixel_size: int = 16):
+        idx = np.atleast_1d(idx)
+        floors, r, c = self.decode(self.agent[idx])
+        g_floors, g_r, g_c = self.decode(self.goal[idx])
+        show_goal = np.flatnonzero(floors == g_floors)
+        g = self.grid[floors]
+        g[show_goal, g_r[show_goal], g_c[show_goal]] = GOAL
+        g[idx, r, c] = AGENT
+        img = grid_to_rgb(g)
+        if mode == 'rgb' or mode == 'rgb_array': return img
+        else:
+            import pygame
+            if self._viewer is None:
+                pygame.init()
+                self._viewer = pygame.display.set_mode(img.shape[:-1])
+            sfc = pygame.surfarray.make_surface(img)
+            self._viewer.blit(sfc, (0,0))
+            pygame.display.update()
+            return img
+
+
+test = HansenMultistoryFourRoomsVecEnv(16, action_failure_probability=0)
 o = test.reset()
 a = test.render()
+for t in range (100):
+    o, r, d, info = test.step(test.action_space.sample())
 print(o)
