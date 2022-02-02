@@ -68,12 +68,12 @@ def decode_state(states: np.ndarray, y: int = 5, n_locs: int = 4) -> Sequence[np
     tmp = tmp // (n_locs+1)
     c = tmp % y
     r = tmp // y
-    return r, c, p, d
+    return r.astype(int), c.astype(int), p.astype(int), d.astype(int)
 
 
 def encode_state(r, c, p, d, y: int = 5, n_locs: int = 4):
     """Encode taxi row, taxi col, passenger index, and destination index as single int state"""
-    return ((r * y + c) * (n_locs + 1) + p) * n_locs + d
+    return int(((r * y + c) * (n_locs + 1) + p) * n_locs + d)
 
 def generate_hansen_map(bordered_map: np.ndarray, tgrid: np.ndarray, cc: Callable):
     hansen_encodings = np.zeros(tgrid.shape, dtype=int)
@@ -126,7 +126,7 @@ class TaxiVecEnv(gym.Env):
         self.hansen_encodings = generate_hansen_map(self.desc, self.tgrid, self.cc)
         self.rows, self.cols = self.tgrid.shape
         self.locs = get_locations_from_np_str_map(self.tgrid)
-        self.np_locs = np.array(self.locs)
+        self.np_locs = np.array(self.locs).T
 
         # Timer
         self.time_limit = time_limit
@@ -139,7 +139,7 @@ class TaxiVecEnv(gym.Env):
         self.na = self.single_action_space.n
 
         # Observations
-        self.nlocs = self.np_locs.shape[-1]
+        self.nlocs = self.np_locs.shape[0]
         self.ns = compute_obs_space(self.tgrid, self.nlocs, False)  # Same # states
 
 
@@ -163,7 +163,7 @@ class TaxiVecEnv(gym.Env):
         # Internal state
         self.n_dropoffs = num_passengers
         self.seed()
-        self.s = np.zeros(self.num_envs)  # Maintain state as single int
+        self.s = np.zeros(self.num_envs, dtype=int)  # Maintain state as single int
         self.n_dropoffs_completed = np.zeros(self.num_envs)  # How many passengers have been delivered?
 
     def seed(self, seed=None):
@@ -176,6 +176,43 @@ class TaxiVecEnv(gym.Env):
         self.lastaction = None
         self._reset_mask(np.ones(self.num_envs, bool))
         return self._obs()
+
+    def step(self, actions):
+        self.elapsed += 1
+        r, c, p, d = self.decode(self.s)
+        # Take action, don't go out of bounds or into wall
+        a = self.ACTIONS_YX[actions]
+        rnew, cnew = np.clip(r + a[:, 0], 0, self.rows - 1), np.clip(r + a[:, 1], 0, self.cols - 1)
+        not_wall = self.desc[self.cc(rnew, cnew)] != '|'
+        r[not_wall], c[not_wall] = rnew[not_wall], cnew[not_wall]
+        # Compute rewards
+        tloc = np.column_stack((r, c))
+        rew = np.full(self.num_envs, self.ANY_MOVE, dtype=np.float32)
+        p_or_d = actions == 4  # Attempted pickup/dropoff
+        # Goal is dropoff, with passenger in taxi, at destination location
+        goal_move = p_or_d & (p == self.nlocs) & (self.np_locs[d] == tloc).all(-1)
+        self.n_dropoffs_completed[goal_move] += 1
+        # Can pickup if passenger in same location as taxi, not yet in taxi
+        pickup_move = p_or_d & (p < self.nlocs) & (self.np_locs[p] == tloc).all(-1)
+        p[pickup_move] = self.nlocs
+        # Any other attempt to pickup/dropoff is wrong. No change in state
+        bad_move = p_or_d & ~goal_move & ~pickup_move
+        rew[goal_move] = self.GOAL_MOVE
+        rew[bad_move] = self.BAD_MOVE
+        done = np.zeros(self.num_envs, bool)
+        # Terminal if we did our # tasks or if we ran out of time
+        done[self.n_dropoffs_completed == self.n_dropoffs] = True
+        done[self.elapsed >= self.time_limit] = True
+        self.lastaction = actions[0] if not done[0] else None
+        # Reset passenger and destination (but not taxi) where not done but completed a task
+        task_completed = goal_move & ~done
+        self._reset_passenger_and_destination(task_completed, r[task_completed], c[task_completed])
+        self._reset_mask(done)
+        return self._obs(), rew, done, [{}] * self.num_envs
+
+
+    def render(self, mode="human"):
+        ...
 
     def _reset_mask(self, mask: np.ndarray):
         """Fully reset some environments"""
@@ -196,12 +233,19 @@ class TaxiVecEnv(gym.Env):
                 d_idx[m] = self.rng.randint(self.locs, size=m.sum())
             self.s[mask] = self.encode(r, c, p_idx, d_idx)  # Store in state
 
+    def _obs(self):
+        """Discrete observation for agent"""
+        return self._hansen_obs(*self.decode(self.s)) if self.hansen else self.s
+
     def _hansen_obs(self, r, c, p, d):
-        return (self.hansen_encodings[r,c] * (self.nlocs + 1) * p) * self.nlocs * d
+        """Hansen-style observation (walls only)"""
+        return (self.hansen_encodings[r,c] * (self.nlocs + 1) + p) * self.nlocs + d
 
 
 
 
 if __name__ == "__main__":
-    e = TaxiVecEnv(8, hansen_obs=True)
-    e.reset()
+    e = TaxiVecEnv(8, map=EXTENDED_MAP, hansen_obs=True)
+    o = e.reset()
+    o, r, d, info = e.step(e.action_space.sample())
+    print(3)
