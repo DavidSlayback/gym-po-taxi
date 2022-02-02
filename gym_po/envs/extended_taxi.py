@@ -155,19 +155,16 @@ class TaxiVecEnv(gym.Env):
                                  for d in range(self.nlocs) if d != p])
         self.state_distribution[valid_states] += 1
         self.state_distribution /= self.state_distribution.sum()
+        self.hansen = False
         if hansen_obs:
             self.name = 'HansenTaxi-v4'
-        else:
-            self.encode_obs = self.encode
-
+            self.hansen = True
 
         # Internal state
         self.n_dropoffs = num_passengers
         self.seed()
         self.s = np.zeros(self.num_envs)  # Maintain state as single int
         self.n_dropoffs_completed = np.zeros(self.num_envs)  # How many passengers have been delivered?
-
-        # Passenger resets
 
     def seed(self, seed=None):
         """Seed our rng"""
@@ -198,6 +195,9 @@ class TaxiVecEnv(gym.Env):
             while (m := mask & (p_idx == d_idx)).any():
                 d_idx[m] = self.rng.randint(self.locs, size=m.sum())
             self.s[mask] = self.encode(r, c, p_idx, d_idx)  # Store in state
+
+    def _hansen_obs(self, r, c, p, d):
+        return (self.hansen_encodings[r,c] * (self.nlocs + 1) * p) * self.nlocs * d
 
 
 
