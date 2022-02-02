@@ -186,6 +186,7 @@ class TaxiVecEnv(gym.Env):
         a = self.ACTIONS_YX[actions]
         rnew, cnew = np.clip(r + a[:, 0], 0, self.rows - 1), np.clip(r + a[:, 1], 0, self.cols - 1)
         not_wall = self.desc[self.cc(rnew, cnew)] != '|'
+        # TODO: Fix this for standard taxi map with the pseudo wall
         r[not_wall], c[not_wall] = rnew[not_wall], cnew[not_wall]
         # Compute rewards
         tloc = np.column_stack((r, c))
@@ -268,12 +269,13 @@ class TaxiVecEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    e = TaxiVecEnv(8, map=EXTENDED_MAP, hansen_obs=True)
+    e = TaxiVecEnv(256, map=EXTENDED_MAP, hansen_obs=True)
     o = e.reset()
-    o, r, d, info = e.step(e.action_space.sample())
-    e.render()
-    img = e.render('rgb_array')
-    from PIL import Image
-    tim = Image.fromarray(img)
-    tim.save('test.png')
+    for t in range(100000):
+        o, r, d, info = e.step(e.action_space.sample())
+    # e.render()
+    # img = e.render('rgb_array')
+    # from PIL import Image
+    # tim = Image.fromarray(img)
+    # tim.save('test.png')
     print(3)
