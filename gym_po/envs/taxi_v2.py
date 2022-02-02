@@ -37,7 +37,7 @@ MAGENTA = np.array((255, 0, 255), dtype=np.uint8)  # Passenger location
 TEAL = np.array((0, 128, 128), dtype=np.uint8)  # Passenger location
 GRAY = np.array((96, 96, 96), dtype=np.uint8)  # Potential passenger locations
 BLUE = np.array((0, 0, 255), dtype=np.uint8)  # Destination
-DARK_GRAY = np.array((204, 204, 204), dtype=np.uint8)
+DARK_GRAY = np.array((204, 204, 204), dtype=np.uint8)  # Pseudo-wall
 
 # Build the interior, pad with zeros!
 RENDER_MAP = np.zeros((int((y-2)*CELL_PX),int(np.floor((x-2)/2) * WALL_PX + np.ceil((x-2)/2) * CELL_PX), 3), dtype=np.uint8)
@@ -60,22 +60,6 @@ for i, row in enumerate(RENDER_ROW_START_IDX):
             RENDER_LOCS.append(tuple(np.mgrid[:CELL_PX, :CELL_PX] + np.array([row, col], dtype=int)[:, None, None]))
             RENDER_MAP[RENDER_LOCS[-1]] = GRAY
 
-
-MAP_TO_COLOR = {
-    '+': WHITE,
-    '-': WHITE,
-    '|': WHITE,
-    ' ': BLACK,
-    ':': GRAY,
-    'R': TEAL,
-    'Y': TEAL,
-    'G': TEAL,
-    '': TEAL,
-    'T': YELLOW,  # Empty taxi
-    'P': MAGENTA,  # Passenger waiting here
-    'F': GREEN,  # Full taxi
-    'D': BLUE  # Destination
-}
 
 class TaxiEnv(discrete.DiscreteEnv):
     """
