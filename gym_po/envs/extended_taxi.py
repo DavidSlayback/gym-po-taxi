@@ -100,6 +100,8 @@ def str_map_to_img(map: np.ndarray, cell_pixel_size: int = CELL_PX) -> np.ndarra
     img[map == 'T'] = TAXI
     img[map == 'F'] = FULL_TAXI
     img[map == 'D'] = DESTINATION
+    img[map == ' '] = FLOOR
+    img[map == ':'] = FAKE_WALL
     img[(img == 3).all(-1)] = LOC
     return cv2.resize(img, (y*cell_pixel_size, x*cell_pixel_size), interpolation=cv2.INTER_AREA)
 
@@ -212,7 +214,28 @@ class TaxiVecEnv(gym.Env):
 
 
     def render(self, mode="human"):
-        ...
+        img = self.desc.copy()
+        r, c, p, d = self.decode(self.s[0])
+        tc = self.cc(r, c); dc = self.cc(*self.np_locs[d].T)
+        img[dc] = 'D'
+        p_in_taxi = p == self.nlocs
+        if p_in_taxi: img[tc] = 'F'
+        else:
+            pc = self.cc(*self.np_locs[p].T)
+            img[pc] = 'P'
+            img[tc] = 'T'
+        if mode == "human":
+            print(img)
+        else:
+            text_space = 20
+            img = str_map_to_img(img)
+            img = np.concatenate((img, np.zeros((text_space, *img.shape[1:]), dtype=np.uint8)), axis=0)
+            text_anchor = (5, img.shape[0] - text_space)
+            # Add last action
+            text = f"  ({self.ACTION_NAMES[self.lastaction]})\n" if self.lastaction is not None else ''
+            if text:
+                cv2.putText(img, text, text_anchor, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1, lineType=cv2.LINE_AA)
+            return img
 
     def _reset_mask(self, mask: np.ndarray):
         """Fully reset some environments"""
@@ -248,4 +271,9 @@ if __name__ == "__main__":
     e = TaxiVecEnv(8, map=EXTENDED_MAP, hansen_obs=True)
     o = e.reset()
     o, r, d, info = e.step(e.action_space.sample())
+    e.render()
+    img = e.render('rgb_array')
+    from PIL import Image
+    tim = Image.fromarray(img)
+    tim.save('test.png')
     print(3)
