@@ -3,6 +3,7 @@ __all__ = ["TaxiVecEnv", "ExtendedTaxiVecEnv", "HansenTaxiVecEnv", "ExtendedHans
 """Extended (8x8) Taxi from https://harshakokel.com/pdf/DRePReL-workshop.pdf"""
 from functools import partial
 from typing import Sequence, Callable, Tuple
+from .render_utils import CELL_PX, COLORS
 
 import numpy as np
 import cv2
@@ -11,7 +12,7 @@ from gym.vector.utils import batch_space
 from gym.utils.seeding import np_random
 
 
-CELL_PX = 16
+# CELL_PX = 16
 
 # Original taxi map, but not quite, need the pseudo-walls
 TAXI_MAP = (
@@ -21,14 +22,14 @@ TAXI_MAP = (
     " | : | : ",
     "Y| : |B: ",
 )
-FLOOR = np.array((96, 96, 96), dtype=np.uint8)  # Empty ground
-WALL = np.array((0, 0, 0), dtype=np.uint8)  # WALLS
-TAXI = np.array((128, 128, 0), dtype=np.uint8)  # Empty taxi
-FULL_TAXI = np.array((0, 128, 0), dtype=np.uint8)  # Full taxi
-PASSENGER = np.array((128, 0, 128), dtype=np.uint8)  # Passenger location
-FAKE_WALL = np.array((0, 128, 128), dtype=np.uint8)  # Pseudo-wall (skips)
-LOC = np.array((190, 190, 190), dtype=np.uint8)  # Potential passenger locations
-DESTINATION = np.array((0, 0, 128), dtype=np.uint8)  # Destination
+FLOOR = COLORS.gray_mid_dark
+WALL = COLORS.black
+TAXI = COLORS.yellow
+FULL_TAXI = COLORS.green
+PASSENGER = COLORS.purple
+FAKE_WALL = COLORS.teal
+LOC = COLORS.gray_light
+DESTINATION = COLORS.blue
 DIR = np.array([[-1, 0], [1,0], [0,-1], [0, 1]], dtype=int).T  # hansen directions
 
 # Extended taxi map
