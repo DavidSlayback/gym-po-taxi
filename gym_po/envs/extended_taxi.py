@@ -4,6 +4,7 @@ __all__ = ["TaxiVecEnv", "ExtendedTaxiVecEnv", "HansenTaxiVecEnv", "ExtendedHans
 from functools import partial
 from typing import Sequence, Callable, Tuple
 from .render_utils import CELL_PX, COLORS
+from .grid_utils import DIRECTIONS_2D_NP
 
 import numpy as np
 import cv2
@@ -11,8 +12,6 @@ import gym
 from gym.vector.utils import batch_space
 from gym.utils.seeding import np_random
 
-
-# CELL_PX = 16
 
 # Original taxi map, but not quite, need the pseudo-walls
 TAXI_MAP = (
@@ -30,7 +29,7 @@ PASSENGER = COLORS.purple
 FAKE_WALL = COLORS.teal
 LOC = COLORS.gray_light
 DESTINATION = COLORS.blue
-DIR = np.array([[-1, 0], [1,0], [0,-1], [0, 1]], dtype=int).T  # hansen directions
+DIR = DIRECTIONS_2D_NP[:, :4]  # North, South, West, East
 
 # Extended taxi map
 EXTENDED_TAXI_MAP = (
