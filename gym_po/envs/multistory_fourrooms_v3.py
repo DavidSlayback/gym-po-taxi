@@ -1,9 +1,11 @@
 from typing import Sequence, Tuple, Callable, Optional
 import numpy as np
 import gym
+from gym.utils.seeding import np_random
 
 from .grid_utils import WALLS, DIRECTIONS_2D_NP
 from .render_utils import COLORS, resize, draw_text_at, CELL_PX
+from .action_utils import generate_action_probability_matrix, vectorized_multinomial_with_rng
 
 # Fourrooms minus the external wall (13x13 -> 11x11)
 # Upstairs and downstairs locations marked by "U" and "D"
@@ -61,22 +63,23 @@ def generate_layout(map: Sequence[str], grid_z: int = 1) -> np.ndarray:
 
 
 
-def compute_obs_space(layout: np.ndarray, hansen: bool = False) -> int:
+def compute_obs_space(img_map: np.ndarray, hansen: bool = False) -> int:
     """Compute discrete observation space
 
     Args:
-        layout: Full map (floors, y, x), can be bordered or now
+        layout: Full map (floors, y, x, 3), can be bordered or now
         hansen: Use hansen (adjacent empty/wall/stair/goal only) observations
     Returns:
         n: Number of possible discrete observations
     """
-    return int(4 ** 4) if hansen else int((~np.isin(layout, WALLS)).sum().item())
+    return int(4 ** 4) if hansen else img_map[...,].nonzero().sum().item()
 
 
 class MultistoryFourRoomsVecEnv(gym.Env):
     """Vectorized Multistory fourrooms environment"""
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
+    metadata = {"name": "MultistoryFourRooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     ACTIONS = DIRECTIONS_2D_NP[:, :4]
+    ACTION_NAMES = ['Up', 'Down', 'Left', 'Right']
 
     def __init__(self, num_envs: int, grid_z: int = 1, map: Sequence[str] = BASE_FOURROOMS_MAP_WITH_STAIRS,
                  seed: Optional[int] = None, time_limit: int = 100, obs_n: int = 1,
@@ -90,7 +93,8 @@ class MultistoryFourRoomsVecEnv(gym.Env):
             grid_z: Number of floors
             map: Base (unbordered) map for floors. 'U' is upstairs, 'D' is downstairs
             seed: Seed to use
-            time_limit: Max number of timesteps before an environment resetes
+            time_limit: Max number of timesteps before an environment resets
+            obs_n: If 0, discrete, if 1, use hansen, otherwise use grid observations
             action_failure_probability: Probability that a chosen action will fail
             agent_floor: Floor where agent can spawn (defaults to bottom)
             goal_floor: Floor where goal can spawn (defaults to top)
@@ -104,10 +108,22 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         # Time limit
         self.time_limit = time_limit
         self.elapsed = np.zeros(num_envs, dtype=int)
+        # Agent and goal sampling
+        self.agent_floor = agent_floor
+        self.goal_floor = goal_floor
+        self.fixed_agent_location = agent_location
+        self.fixed_goal_location = goal_location
+        # Observation space
+        self.discrete = obs_n == 0
+        self.hansen = obs_n == 1
+        self.img_grid = generate_layout(map, grid_z)
+        if (obs_n < 3): o_n = compute_obs_space(self.img_grid)
+        self.single_observation_space
+
 
     def seed(self, seed: Optional[int] = None):
         self.rng, seed = np_random(seed)
         return seed
 
 if __name__ == "__main__":
-    bmap, tmap, cc = convert_str_map_to_walled_np_str(BASE_FOURROOMS_MAP_WITH_STAIRS)
+    e = MultistoryFourRoomsVecEnv(8, 3)
