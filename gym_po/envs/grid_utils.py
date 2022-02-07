@@ -31,6 +31,12 @@ class DIRECTIONS_3D:
     upstairs = np.array([1, 0, 0], dtype=int)
     downstairs = np.array([-1, 0, 0], dtype=int)
 
+DIRECTIONS_3D_NP = np.array([DIRECTIONS_3D.up, DIRECTIONS_3D.down, DIRECTIONS_3D.west, DIRECTIONS_3D.east,
+                             DIRECTIONS_3D.upstairs, DIRECTIONS_3D.downstairs,
+                             DIRECTIONS_2D.northwest, DIRECTIONS_2D.northeast, DIRECTIONS_2D.southwest,
+                             DIRECTIONS_2D.southeast]).T
+
+
 
 WALLS = {'|', '-'}  # Vertical and horizontal walls
 
