@@ -1,7 +1,7 @@
 from typing import Sequence, Tuple, Union, Callable, Iterable
 from functools import partial
 import numpy as np
-
+from dotsi import DotsiDict
 
 # Standard 2D (yx) directions (typical for actions)
 class DIRECTIONS_2D:
@@ -33,8 +33,8 @@ class DIRECTIONS_3D:
 
 DIRECTIONS_3D_NP = np.array([DIRECTIONS_3D.up, DIRECTIONS_3D.down, DIRECTIONS_3D.west, DIRECTIONS_3D.east,
                              DIRECTIONS_3D.upstairs, DIRECTIONS_3D.downstairs,
-                             DIRECTIONS_2D.northwest, DIRECTIONS_2D.northeast, DIRECTIONS_2D.southwest,
-                             DIRECTIONS_2D.southeast]).T
+                             DIRECTIONS_3D.northwest, DIRECTIONS_3D.northeast, DIRECTIONS_3D.southwest,
+                             DIRECTIONS_3D.southeast]).T
 
 
 
@@ -89,6 +89,21 @@ def get_flat_to_coord_function(grid_shape: Sequence[int]) -> Callable[[Union[Ite
     fn = partial(np.unravel_index, shape=grid_shape)
     def f(flat_coordinates: Union[Iterable, np.ndarray, int, float]) -> np.ndarray: return np.array(fn(flat_coordinates))
     return f
+
+def get_coord_to_flat_function(grid_shape: Sequence[int], order: str = 'C') -> Callable[[Union[Iterable, np.ndarray, int, float]], np.ndarray]:
+    """Returns a partial np.unravel_index to convert (z)yx coordinates to single integers
+
+    Args:
+        grid_shape: Corresponding shape of grid to do coordinates for
+    Return:
+        fn: Callable that converts 1 or more grid coordinates (ndimxncoord) to flat coordinates (ncoord)
+    """
+    multipliers = np.array(grid_shape).cumprod()[:-1] if order == 'F' else np.array(grid_shape)[::-1].cumprod()[:-1]
+    multipliers = np.concatenate((np.array([1]), multipliers))[None, :]  # 1x3
+    def f(grid_coordinates: Union[Iterable, Tuple[np.ndarray], int, float]) -> np.ndarray:
+        return multipliers.dot(np.array(grid_coordinates)).squeeze(0)  # ncoord
+    return f
+
 
 
 def get_coord_to_flat_function(grid_shape: Sequence[int]) -> Callable[[Union[Iterable, Tuple[np.ndarray], int, float]], np.ndarray]:

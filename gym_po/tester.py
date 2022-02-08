@@ -3,13 +3,14 @@ import time
 from wrappers import RecordEpisodeStatistics, NormalizeReward
 from envs import *
 from gym.wrappers.record_video import RecordVideo
+from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
 
 if __name__ == "__main__":
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
-    e = TaxiVecEnv(2, num_passengers=3, hansen_obs=False, time_limit=10000)
+    # e = TaxiVecEnv(2, num_passengers=3, hansen_obs=False, time_limit=10000)
     # e = TaxiEnv()
     # e = HansenTaxiVecEnv(8, time_limit=200)
-    # e = MultistoryFourRoomsVecEnv(2, time_limit=1000)
+    e = MultistoryFourRoomsVecEnv(2, time_limit=1000, grid_z=3, obs_n=0)
     e = RecordVideo(e, video_folder='videos')
     # e = NormalizeReward(e, 0.95)
     # e = RecordEpisodeStatistics(e, 0.95)
