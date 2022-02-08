@@ -46,6 +46,8 @@ GR_CNST_COLORS = DotsiDict({
     'stair_down': COLORS.gray_dark
 })
 
+HANSEN_MULTIPLIERS = np.array([1, 4, 16, 64])  # 4 possibilities for adjacent observations
+
 def convert_str_map_to_walled_np_cnst(map: Sequence[str]) -> np.ndarray:
     """Return a bordered version of the map converted to grid constants (for image and navigation)"""
     str_map = np.pad(np.asarray(map, dtype='c').astype(str), 1, constant_values='|')  # Border
@@ -77,7 +79,6 @@ def generate_layout_and_img(map: Sequence[str], grid_z: int = 1) -> Tuple[np.nda
     for (k, v) in GR_CNST.items():
         img_map[cnst_layout == v] = GR_CNST_COLORS[k]
     return cnst_layout, img_map
-
 
 
 def compute_obs_space(cnst_layout: np.ndarray, obs_n: int = 0) -> Union[Box, Discrete]:
@@ -146,21 +147,22 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         self._shape = self.grid.shape
         self.single_observation_space = compute_obs_space(self.grid, obs_n)
         self.observation_space = batch_space(self.single_observation_space, num_envs)
+        ec = (self.flat_grid != GR_CNST.wall).nonzero()[0]
+        self.f_coord_to_e_coord = np.isin(np.arange(self.grid.size), ec, True).cumsum() - 1  # Convert agent coordinates to discrete observations (of which there are fewer)
+        self.set_obs_fn(obs_n)
         # Grid-to-flat and flat-to-grid conversions (assume 'C' order)
         self._to_flat = get_coord_to_flat_function(self._shape)  # (ncoord,)
         self._to_grid = get_flat_to_coord_function(self._shape)  # (ndim, ncoord)
         # Flat actions
+        f_ups, f_downs = 0,0
+        if grid_z > 1:
+            ne, sw = (self.flat_grid == GR_CNST.stair_up).nonzero()[0], (self.flat_grid == GR_CNST.stair_down).nonzero()[0]
+            f_ups, f_downs = sw[0] - ne[0], ne[0] - sw[0]
         base_coord = np.ones((3,), dtype=int)
         fbc = self._to_flat(base_coord)
-        usds = DIRECTIONS_3D_NP[:, -2:]  # Upstairs,downstairs base
-        if (self.grid == GR_CNST.stair_up).any():  # Add the offsets needed (upstairs yx -> downstairs yx and vice versa)
-            us_yx = np.array((self.grid[0] == GR_CNST.stair_up).nonzero()).flatten()
-            ds_yx = np.array((self.grid[-1] == GR_CNST.stair_down).nonzero()).flatten()
-            usds_diff = us_yx - ds_yx
-            # usds[1:, 0] -=
-
-        fbc_act = self._to_flat(base_coord[...,None] + np.concatenate((self.ACTIONS, DIRECTIONS_3D_NP[:, -2:]), axis=1))
-        self.flat_actions = self._to_flat(self.ACTIONS)
+        fbc_act = self._to_flat(base_coord[...,None] + self.ACTIONS)
+        self.flat_actions = fbc_act - fbc
+        self.flat_actions = np.concatenate((self.flat_actions, np.array([f_ups, f_downs])), axis=0)
         # Agent and goal sampling
         self.agent_floor = np.array(agent_floor) if agent_floor >= -1 else np.arange(self._shape[0])
         self.agent_floor[self.agent_floor == -1] = self.grid.shape[0] - 1
@@ -172,9 +174,15 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         # Internal agent and goal state
         self.agent = np.zeros(self.num_envs, dtype=int)
         self.goal = np.zeros(self.num_envs, dtype=int)
-
         # Seed if provided
         self.seed(seed)
+
+    def set_obs_fn(self, obs_n: int):
+        if obs_n == 0: self._obs = self._discrete_obs
+        elif obs_n == 1: self._obs = self._hansen_obs
+        else:
+            assert (obs_n % 2) == 1
+            self._obs = self._grid_obs
 
     def seed(self, seed: Optional[int] = None):
         """Set internal seed (returns sampled seed if none provided)"""
@@ -190,19 +198,63 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         """Reset some environments, no return"""
         b = mask.sum()
         if b:
-            ...
+            self.elapsed[mask] = 0
+            self.goal[mask] = self.rng.choice(self.goal_spawn_locations, size=b)
+            self.agent[mask] = self.rng.choice(self.agent_spawn_locations, size=b)
+            # Resample agent coordinates until we don't start on a goal
+            while (m := mask & (self.agent == self.goal)).any():
+                self.agent[m] = self.rng.choice(self.agent_spawn_locations, size=m.sum())
 
-    def step(self, action):
+    def step(self, actions: Union[np.ndarray, Sequence[int]]):
         """Step in the environment"""
-        ...
+        self.elapsed += 1
+        # Handle movement
+        a = vectorized_multinomial_with_rng(self.action_probability_matrix[np.array(actions)], self.rng)  # Sample action failures
+        flat_a = self.flat_actions[a]  # Convert to flat coordinates
+        new_loc = self.agent + flat_a; moved = self._check_bounds(new_loc)
+        self.agent[moved] = new_loc[moved]  # Move agent
+        us, ds = self.flat_grid[self.agent] == GR_CNST.stair_up, self.flat_grid[self.agent] == GR_CNST.stair_down
+        self.agent[moved & us] += self.flat_actions[-2]
+        self.agent[moved & ds] += self.flat_actions[-1]
+        # Handle reward
+        r = np.zeros(self.num_envs, dtype=np.float32)
+        d = (self.agent == self.goal)
+        r[d] += 1.
+        r[~moved] += self.wall_reward
+        d |= self.elapsed > self.time_limit
+        self._masked_reset(d)
+        return self._obs(), r, d, [{}] * self.num_envs
 
-    def _obs(self):
+
+    def _check_bounds(self, proposed_locations: np.ndarray) -> np.ndarray:
+        valid = (0 <= proposed_locations) & (proposed_locations < self.flat_grid.size)  # In bounds
+        valid[valid] = self.flat_grid[proposed_locations[valid]] != GR_CNST.wall
+        return valid
+
+    def _obs(self) -> np.ndarray:
         """"""
         ...
+
+    def _discrete_obs(self) -> np.ndarray:
+        """Discrete observation via lookup table"""
+        return self.f_coord_to_e_coord[self.agent]
+
+    def _hansen_obs(self) -> np.ndarray:
+        """Hansen-style observations"""
+        hgrid = self.flat_grid[(self.agent[:, None] + self.flat_actions[None, :-2]).reshape(-1)].reshape(-1, 4)  # Get adjacent squares for each agent
+        # Re-index some stuff (alias stairs, then remove "agent" observation
+        hgrid[hgrid == GR_CNST.stair_down] = GR_CNST.stair_up
+        hgrid[hgrid > GR_CNST.empty] -= 1
+        return hgrid.dot(HANSEN_MULTIPLIERS)
+
+    def _grid_obs(self, obs_n: int = 3) -> np.ndarray:
+        """Grid observations around the agent. Need to make sure all on same floor"""
+        ag = self._to_grid(self.agent)
+        offset = obs_n % 2
+        g = np.mgrid[:1, ]
+        return np.array([0])
+
 
     def render(self, mode="human"):
         """Render environment as an rgb array, with highlighting of agent's view. If "human", render with pygame"""
         ...
-
-if __name__ == "__main__":
-    e = MultistoryFourRoomsVecEnv(8, 3)

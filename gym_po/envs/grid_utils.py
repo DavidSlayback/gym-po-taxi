@@ -90,19 +90,19 @@ def get_flat_to_coord_function(grid_shape: Sequence[int]) -> Callable[[Union[Ite
     def f(flat_coordinates: Union[Iterable, np.ndarray, int, float]) -> np.ndarray: return np.array(fn(flat_coordinates))
     return f
 
-def get_coord_to_flat_function(grid_shape: Sequence[int], order: str = 'C') -> Callable[[Union[Iterable, np.ndarray, int, float]], np.ndarray]:
-    """Returns a partial np.unravel_index to convert (z)yx coordinates to single integers
-
-    Args:
-        grid_shape: Corresponding shape of grid to do coordinates for
-    Return:
-        fn: Callable that converts 1 or more grid coordinates (ndimxncoord) to flat coordinates (ncoord)
-    """
-    multipliers = np.array(grid_shape).cumprod()[:-1] if order == 'F' else np.array(grid_shape)[::-1].cumprod()[:-1]
-    multipliers = np.concatenate((np.array([1]), multipliers))[None, :]  # 1x3
-    def f(grid_coordinates: Union[Iterable, Tuple[np.ndarray], int, float]) -> np.ndarray:
-        return multipliers.dot(np.array(grid_coordinates)).squeeze(0)  # ncoord
-    return f
+# def get_coord_to_flat_function(grid_shape: Sequence[int], order: str = 'C') -> Callable[[Union[Iterable, np.ndarray, int, float]], np.ndarray]:
+#     """Returns a partial np.unravel_index to convert (z)yx coordinates to single integers
+#
+#     Args:
+#         grid_shape: Corresponding shape of grid to do coordinates for
+#     Return:
+#         fn: Callable that converts 1 or more grid coordinates (ndimxncoord) to flat coordinates (ncoord)
+#     """
+#     multipliers = np.array(grid_shape).cumprod()[:-1] if order == 'F' else np.array(grid_shape)[::-1].cumprod()[:-1]
+#     multipliers = np.concatenate((np.array([1]), multipliers))[None, :]  # 1x3
+#     def f(grid_coordinates: Union[Iterable, Tuple[np.ndarray], int, float]) -> np.ndarray:
+#         return multipliers.dot(np.array(grid_coordinates)).squeeze(0)  # ncoord
+#     return f
 
 
 
