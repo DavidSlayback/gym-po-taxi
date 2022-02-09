@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Sequence, Tuple, Callable, Optional, NamedTuple, Union
 import numpy as np
 import gym
@@ -39,11 +40,11 @@ GR_CNST = DotsiDict({
 # Constant colors, can be indexed by values above
 GR_CNST_COLORS = DotsiDict({
     'wall': COLORS.black,
-    'empty': COLORS.white,
+    'empty': COLORS.gray_dark,
     'agent': COLORS.green,
     'goal': COLORS.blue,
     'stair_up': COLORS.gray_light,
-    'stair_down': COLORS.gray_dark
+    'stair_down': COLORS.gray
 })
 
 HANSEN_MULTIPLIERS = np.array([1, 4, 16, 64])  # 4 possibilities for adjacent observations
@@ -109,9 +110,9 @@ class MultistoryFourRoomsVecEnv(gym.Env):
     ACTION_NAMES = ['Up', 'Down', 'Left', 'Right']
 
     def __init__(self, num_envs: int, grid_z: int = 1, map: Sequence[str] = BASE_FOURROOMS_MAP_WITH_STAIRS,
-                 seed: Optional[int] = None, time_limit: int = 100, obs_n: int = 1,
+                 seed: Optional[int] = None, time_limit: int = 1000, obs_n: int = 0,
                  action_failure_probability: float = 1./3, agent_floor: int = 0, goal_floor: int = -1,
-                 agent_location: Optional[Tuple[int, int]] = None, goal_location: Optional[Tuple[int, int]] = None,
+                 agent_location: Optional[Tuple[int, int]] = None, goal_location: Optional[Tuple[int, int]] = (7, 9),
                  wall_reward: float = 0.):
         """Create a multistory four rooms environment
 
@@ -164,25 +165,34 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         self.flat_actions = fbc_act - fbc
         self.flat_actions = np.concatenate((self.flat_actions, np.array([f_ups, f_downs])), axis=0)
         # Agent and goal sampling
-        self.agent_floor = np.array(agent_floor) if agent_floor >= -1 else np.arange(self._shape[0])
-        self.agent_floor[self.agent_floor == -1] = self.grid.shape[0] - 1
-        self.goal_floor = np.array(goal_floor) if goal_floor >= -1 else np.arange(self._shape[0])
-        self.goal_floor[self.goal_floor == -1] = self.grid.shape[0] - 1
+        if agent_floor == -1: agent_floor = self.grid.shape[0] - 1
+        if goal_floor == -1: goal_floor = self.grid.shape[0] - 1
+        self.agent_floor = np.array(agent_floor) if agent_floor >= 0 else np.arange(self._shape[0])
+        self.goal_floor = np.array(goal_floor) if goal_floor >= 0 else np.arange(self._shape[0])
         vs = np.array((self.grid == GR_CNST.empty).nonzero())  # Anywhere an agent or goal can spawn
-        self.agent_spawn_locations = self._to_flat(vs[:, np.isin(vs[0], self.agent_floor)]) if agent_location is None else self._to_flat(vs[:, np.isin(vs[0], self.agent_floor) & vs[1] == agent_location[0] & vs[2] == agent_location[1]])
-        self.goal_spawn_locations = self._to_flat(vs[:, np.isin(vs[0], self.goal_floor)]) if goal_location is None else self._to_flat(vs[:, np.isin(vs[0], self.goal_floor) & vs[1] == goal_location[0] & vs[2] == goal_location[1]])
+        self.agent_spawn_locations = self._to_flat(vs[:, np.isin(vs[0], self.agent_floor)]) if agent_location is None else self._to_flat(vs[:, np.isin(vs[0], self.agent_floor) & (vs[1] == agent_location[0]) & (vs[2] == agent_location[1])])
+        self.goal_spawn_locations = self._to_flat(vs[:, np.isin(vs[0], self.goal_floor)]) if goal_location is None else self._to_flat(vs[:, np.isin(vs[0], self.goal_floor) & (vs[1] == goal_location[0]) & (vs[2] == goal_location[1])])
         # Internal agent and goal state
         self.agent = np.zeros(self.num_envs, dtype=int)
         self.goal = np.zeros(self.num_envs, dtype=int)
         # Seed if provided
         self.seed(seed)
+        # Extra
+        self._flat_grid_view = np.zeros((1, 1, 1), dtype=int)
+        self._last_grid_obs_coords = None
+        self._floor_max = self._to_flat(tuple([np.arange(grid_z), np.full(grid_z, self.grid.shape[-2]-1, dtype=int), np.full(grid_z, self.grid.shape[-1]-1, dtype=int)]))[...,None,None]
+        self._floor_min = self._to_flat(tuple([np.arange(grid_z), np.full(grid_z, 0, dtype=int),
+                                               np.full(grid_z, 0, dtype=int)]))[..., None, None]
+        self._b_idx = np.arange(self.num_envs)
+        self._viewer = None
 
     def set_obs_fn(self, obs_n: int):
+        self.obs_n = obs_n
         if obs_n == 0: self._obs = self._discrete_obs
         elif obs_n == 1: self._obs = self._hansen_obs
         else:
             assert (obs_n % 2) == 1
-            self._obs = self._grid_obs
+            self._obs = partial(self._grid_obs, obs_n=obs_n)
 
     def seed(self, seed: Optional[int] = None):
         """Set internal seed (returns sampled seed if none provided)"""
@@ -248,13 +258,58 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         return hgrid.dot(HANSEN_MULTIPLIERS)
 
     def _grid_obs(self, obs_n: int = 3) -> np.ndarray:
-        """Grid observations around the agent. Need to make sure all on same floor"""
-        ag = self._to_grid(self.agent)
-        offset = obs_n % 2
-        g = np.mgrid[:1, ]
-        return np.array([0])
+        """Grid observations around the agent. Need to make sure all on same floor
+
+        Args:
+            obs_n: Odd integer for size of nxn grid
+        Returns:
+            grid: nxn observation grid, with aliased stairs
+        """
+        if self._flat_grid_view.shape[-1] != obs_n: self._compute_flat_grid_view(obs_n)
+        self._last_grid_obs_coords = self.agent[..., None, None] + self._flat_grid_view  # (num_envs, obs_n, obs_n)
+        floors = self._to_grid(self.agent)[0]  # Get agent floors
+        # fmin = self._floor_min[floors]
+        self._last_grid_obs_coords[(self._last_grid_obs_coords[self._b_idx] > self._floor_max[floors]) |
+                                   (self._last_grid_obs_coords[self._b_idx] < self._floor_min[floors])] = 0  # Different floor or out of bounds
+
+        obs = self.flat_grid[self._last_grid_obs_coords]
+        obs[self._last_grid_obs_coords == self.goal[..., None, None]] = GR_CNST.goal  # Add goal
+        obs[obs == GR_CNST.stair_down] = GR_CNST.stair_up  # Alias stairs
+        obs[obs > GR_CNST.agent] -= 1  # We never observe ourselves
+        return obs
+
+    def _compute_flat_grid_view(self, obs_n: int = 3):
+        offset = obs_n // 2
+        offset_coord = np.array([0, offset, offset], dtype=int)
+        g = np.mgrid[:1, :obs_n, :obs_n]  # (3, 1, obs_n, obs_n)
+        self._flat_grid_view = self._to_flat(g) - self._to_flat(offset_coord) # (1, obs_n, obs_n)
 
 
     def render(self, mode="human"):
         """Render environment as an rgb array, with highlighting of agent's view. If "human", render with pygame"""
-        ...
+        a, g = self.agent[0], self.goal[0]
+        ag, gg = self._to_grid(a), self._to_grid(g)  # Grid coordinates
+        img = self.img[ag[0]].copy()  # Get agent's floor
+        img[tuple(ag)[1:]] = GR_CNST_COLORS.agent  # Add agent (always same floor)
+        if gg[0] == ag[0]: img[tuple(gg)[1:]] = GR_CNST_COLORS.goal  # Add goal if on same floor
+        v = ag[1:]
+        if self.obs_n == 1: # Hansen, render floor, highlight hansen grid
+            v = ag[1:, None] + self.ACTIONS[1:]
+        elif self.obs_n > 1:
+            v = self._to_grid(self._last_grid_obs_coords[0])[1:]  # Use cached coordinates
+        img[tuple(v)] += 40  # lighten
+        img = resize(img, CELL_PX)
+        if mode in ('rgb_array', 'rgb'): return img
+        else:
+            import pygame
+            if self._viewer is None:
+                pygame.init()
+                self._viewer = pygame.display.set_mode(img.shape[:-1])
+            sfc = pygame.surfarray.make_surface(img)
+            self._viewer.blit(sfc, (0, 0))
+            pygame.display.update()
+            return img
+
+
+MultistoryFourRoomsVecEnv = partial(MultistoryFourRoomsVecEnv, obs_n=0)
+
