@@ -1,3 +1,3 @@
 from .extended_taxi import TaxiVecEnv, HansenTaxiVecEnv, ExtendedHansenTaxiVecEnv, EXTENDED_TAXI_MAP, ExtendedTaxiVecEnv, TAXI_MAP
 from .car_flag import CarVecEnv, DiscreteActionCarVecEnv
-from .multistory_fourrooms import MultistoryFourRoomsVecEnv, HansenMultistoryFourRoomsVecEnv, GridMultistoryFourRoomsVecEnv
+from .multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv, HansenMultistoryFourRoomsVecEnv, GridMultistoryFourRoomsVecEnv

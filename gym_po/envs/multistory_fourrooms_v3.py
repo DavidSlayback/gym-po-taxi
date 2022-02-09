@@ -311,5 +311,6 @@ class MultistoryFourRoomsVecEnv(gym.Env):
             return img
 
 
-MultistoryFourRoomsVecEnv = partial(MultistoryFourRoomsVecEnv, obs_n=0)
+HansenMultistoryFourRoomsVecEnv = partial(MultistoryFourRoomsVecEnv, obs_n=1)
+GridMultistoryFourRoomsVecEnv = MultistoryFourRoomsVecEnv
 
