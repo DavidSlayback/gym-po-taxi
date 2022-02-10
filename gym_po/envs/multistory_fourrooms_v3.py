@@ -1,15 +1,16 @@
 from functools import partial
-from typing import Sequence, Tuple, Callable, Optional, NamedTuple, Union
-import numpy as np
-import gym
-from gym.spaces import Box, Discrete
-from gym.vector.utils import batch_space
-from gym.utils.seeding import np_random
-from dotsi import DotsiDict
+from typing import Sequence, Tuple, Optional, Union
 
-from .grid_utils import WALLS, DIRECTIONS_3D_NP, get_coord_to_flat_function, get_flat_to_coord_function
-from .render_utils import COLORS, resize, draw_text_at, CELL_PX
+import gym
+import numpy as np
+from dotsi import DotsiDict
+from gym.spaces import Box, Discrete
+from gym.utils.seeding import np_random
+from gym.vector.utils import batch_space
+
 from .action_utils import generate_action_probability_matrix, vectorized_multinomial_with_rng
+from .grid_utils import DIRECTIONS_3D_NP, get_coord_to_flat_function, get_flat_to_coord_function
+from .render_utils import COLORS, resize, CELL_PX
 
 # Fourrooms minus the external wall (13x13 -> 11x11)
 # Upstairs and downstairs locations marked by "U" and "D"

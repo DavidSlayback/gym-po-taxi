@@ -1,6 +1,7 @@
 from typing import Sequence, Tuple
-import numpy as np
+
 import cv2
+import numpy as np
 
 # Pixel constants shared across envs
 CELL_PX = 16

@@ -3,15 +3,15 @@ __all__ = ["TaxiVecEnv", "ExtendedTaxiVecEnv", "HansenTaxiVecEnv", "ExtendedHans
 """Extended (8x8) Taxi from https://harshakokel.com/pdf/DRePReL-workshop.pdf"""
 from functools import partial
 from typing import Sequence, Callable, Tuple
-from .render_utils import CELL_PX, COLORS
-from .grid_utils import DIRECTIONS_2D_NP
 
-import numpy as np
 import cv2
 import gym
-from gym.vector.utils import batch_space
+import numpy as np
 from gym.utils.seeding import np_random
+from gym.vector.utils import batch_space
 
+from .grid_utils import DIRECTIONS_2D_NP
+from .render_utils import CELL_PX, COLORS
 
 # Original taxi map, but not quite, need the pseudo-walls
 TAXI_MAP = (

@@ -1,8 +1,10 @@
 __all__ = ['CarVecEnv', 'DiscreteActionCarVecEnv']
+import os
+
 import gym
 import numpy as np
 from gym import spaces
-import os
+
 if os.name != 'nt':
     # Windows can't handle headless (missing EGL dll)
     import pyglet
@@ -13,7 +15,7 @@ if os.name != 'nt':
 visualize = None  # Use number line
 from gym.utils import seeding
 from gym.vector.utils import batch_space
-from functools import partial
+
 
 class CarVecEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}

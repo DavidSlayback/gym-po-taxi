@@ -1,7 +1,8 @@
-from typing import Sequence, Tuple, Union, Callable, Iterable
 from functools import partial
+from typing import Sequence, Tuple, Union, Callable, Iterable
+
 import numpy as np
-from dotsi import DotsiDict
+
 
 # Standard 2D (yx) directions (typical for actions)
 class DIRECTIONS_2D:
