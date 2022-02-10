@@ -53,7 +53,7 @@ HANSEN_MULTIPLIERS = np.array([1, 4, 16, 64])  # 4 possibilities for adjacent ob
 def convert_str_map_to_walled_np_cnst(map: Sequence[str]) -> np.ndarray:
     """Return a bordered version of the map converted to grid constants (for image and navigation)"""
     str_map = np.pad(np.asarray(map, dtype='c').astype(str), 1, constant_values='|')  # Border
-    cnst_map = np.zeros_like(str_map, dtype=np.uint8)  # Constant "wall"
+    cnst_map = np.zeros_like(str_map, dtype=int)  # Constant "wall"
     cnst_map[str_map == ' '] = GR_CNST.empty  # Fill in empty
     cnst_map[str_map == 'U'] = GR_CNST.stair_up
     cnst_map[str_map == 'D'] = GR_CNST.stair_down
@@ -77,7 +77,7 @@ def generate_layout_and_img(map: Sequence[str], grid_z: int = 1) -> Tuple[np.nda
     else:  # Remove downstairs from bottom, upstairs from top
         cnst_layout[0, cnst_layout[0] == GR_CNST.stair_down] = GR_CNST.empty
         cnst_layout[-1, cnst_layout[-1] == GR_CNST.stair_up] = GR_CNST.empty
-    img_map = np.zeros_like(cnst_layout, shape=(*cnst_layout.shape, 3))  # Unscaled image version
+    img_map = np.zeros_like(cnst_layout, shape=(*cnst_layout.shape, 3), dtype=np.uint8)  # Unscaled image version
     for (k, v) in GR_CNST.items():
         img_map[cnst_layout == v] = GR_CNST_COLORS[k]
     return cnst_layout, img_map
@@ -101,7 +101,7 @@ def compute_obs_space(cnst_layout: np.ndarray, obs_n: int = 0) -> Union[Box, Dis
     elif obs_n == 1:
         return Discrete(4**4)
     assert (obs_n % 2) == 1
-    return Box(0, 4, shape=(obs_n, obs_n), dtype=np.uint8)
+    return Box(0, 4, shape=(obs_n, obs_n), dtype=int)
 
 
 class MultistoryFourRoomsVecEnv(gym.Env):
