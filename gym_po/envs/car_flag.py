@@ -264,10 +264,13 @@ class CarVecEnv(gym.Env):
 
 
 class DiscreteActionCarVecEnv(CarVecEnv):
-    """"""
+    """Discrete action car environment. Evenly spaced actions along control dimension"""
     def __init__(self, num_actions: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._actions = np.linspace(self.MIN_ACT, self.MAX_ACT, num_actions)
+        l, r, c, nact = '<', '>', ':', num_actions // 2
+        self.action_names = ['<' * i + ':' for i in reversed(range(1, nact+1))] + [':' + '>' * i for i in range(1, nact+1)]
+        if (num_actions % 2 == 1): self.action_names.insert(nact, ':')  # Null action
         self.single_action_space = spaces.Discrete(num_actions)
         self.action_space = batch_space(self.single_action_space, self.num_envs)
 
