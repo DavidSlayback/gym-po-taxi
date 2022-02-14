@@ -26,6 +26,7 @@ WALL = COLORS.black
 TAXI = COLORS.yellow
 FULL_TAXI = COLORS.green
 PASSENGER = COLORS.purple
+TAXI_AND_PASSENGER = TAXI + PASSENGER
 FAKE_WALL = COLORS.teal
 LOC = COLORS.gray_light
 DESTINATION = COLORS.blue
@@ -100,6 +101,7 @@ def str_map_to_img(map: np.ndarray, cell_pixel_size: int = CELL_PX, hansen_highl
     img[map == '|'] = WALL
     img[map == 'P'] = PASSENGER
     img[map == 'T'] = TAXI
+    img[map == 'TP'] = TAXI_AND_PASSENGER
     img[map == 'F'] = FULL_TAXI
     img[map == 'D'] = DESTINATION
     img[map == ' '] = FLOOR
@@ -115,9 +117,6 @@ class TaxiVecEnv(gym.Env):
     """Vectorized Taxi environment"""
     metadata = {"render.modes": ["human", "rgb_array", "rgb"], "video.frames_per_second": 5}
 
-    BAD_MOVE = -0.5
-    GOAL_MOVE = 1
-    ANY_MOVE = -0.05
     ACTIONS_YX = np.array([[-1, 0], [1,0], [0,-1], [0,1], [0,0]], dtype=int)
     ACTION_NAMES = ['North', 'South', 'West', 'East', 'Pickup/Dropoff']
     ACTION_DICT = {i: n for i, n in enumerate(ACTION_NAMES)}
@@ -127,9 +126,13 @@ class TaxiVecEnv(gym.Env):
                  time_limit: int = 200,  # How many steps
                  num_passengers: int = 1,  # How many pickup/dropoffs?
                  map: Sequence[str] = TAXI_MAP,  # Which map to use?
-                 hansen_obs: bool = False):  # If true, use hansen observations
+                 hansen_obs: bool = False,  # If true, use hansen observations
+                 reward_goal: float = 1.,  # Rewards
+                 reward_bad: float = -0.5,
+                 reward_any: float = -0.05):
         self.is_vector_env = True
         self.num_envs = num_envs
+        self.GOAL_MOVE, self.BAD_MOVE, self.ANY_MOVE = reward_goal, reward_bad, reward_any
         self.desc, self.tgrid, self.cc = convert_str_map_to_walled_np_str(map)
         self.contains_pseudo_walls = (self.desc == ':').any()
         self.hansen_encodings = generate_hansen_map(self.desc, self.tgrid, self.cc)
@@ -176,6 +179,7 @@ class TaxiVecEnv(gym.Env):
         self.seed()
         self.s = np.zeros(self.num_envs, dtype=int)  # Maintain state as single int
         self.n_dropoffs_completed = np.zeros(self.num_envs)  # How many passengers have been delivered?
+        self._viewer = None
 
     def seed(self, seed=None):
         """Seed our rng"""
@@ -235,20 +239,28 @@ class TaxiVecEnv(gym.Env):
         if p_in_taxi: img[tc] = 'F'
         else:
             pc = self.cc(*self.np_locs[p].T)
-            img[pc] = 'P'
-            img[tc] = 'T'
+            if pc == tc: img[pc] = 'TP'
+            else:
+                img[pc] = 'P'
+                img[tc] = 'T'
+        text_space = 20
+        img = str_map_to_img(img, hansen_highlight=self.hansen)
+        img = np.concatenate((img, np.zeros((text_space, *img.shape[1:]), dtype=np.uint8)), axis=0)
+        text_anchor = (5, img.shape[0] - text_space)
+        # Add last action
+        text = f"  ({self.ACTION_NAMES[self.lastaction]})\n" if self.lastaction is not None else ''
+        if text:
+            cv2.putText(img, text, text_anchor, cv2.FONT_HERSHEY_SIMPLEX, 0.25, (255,255,255), 1, lineType=cv2.LINE_AA)
         if mode == "human":
-            print(img)
-        else:
-            text_space = 20
-            img = str_map_to_img(img, hansen_highlight=self.hansen)
-            img = np.concatenate((img, np.zeros((text_space, *img.shape[1:]), dtype=np.uint8)), axis=0)
-            text_anchor = (5, img.shape[0] - text_space)
-            # Add last action
-            text = f"  ({self.ACTION_NAMES[self.lastaction]})\n" if self.lastaction is not None else ''
-            if text:
-                cv2.putText(img, text, text_anchor, cv2.FONT_HERSHEY_SIMPLEX, 0.25, (255,255,255), 1, lineType=cv2.LINE_AA)
+            import pygame
+            if self._viewer is None:
+                pygame.init()
+                self._viewer = pygame.display.set_mode(img.shape[:-1])
+            sfc = pygame.surfarray.make_surface(img.swapaxes(0,1))
+            self._viewer.blit(sfc, (0, 0))
+            pygame.display.update()
             return img
+        return img
 
     def _reset_mask(self, mask: np.ndarray):
         """Fully reset some environments"""
@@ -262,7 +274,7 @@ class TaxiVecEnv(gym.Env):
         """Only reset passenger and destination locations for some environments"""
         b = mask.sum()
         if b:
-            if (r is None) or (c is None): r, c = self.decode(self.s[mask])
+            if (r is None) or (c is None): r, c = self.decode(self.s[mask])[:-2]
             p_idx = self.rng.randint(self.nlocs, size=b)  # Place passenger
             d_idx = self.rng.randint(self.nlocs, size=b)  # Place destination
             while (m := mask[mask] & (p_idx == d_idx)).any():

@@ -305,8 +305,8 @@ class MultistoryFourRoomsVecEnv(gym.Env):
             import pygame
             if self._viewer is None:
                 pygame.init()
-                self._viewer = pygame.display.set_mode(img.shape[:-1])
-            sfc = pygame.surfarray.make_surface(img)
+                self._viewer = pygame.display.set_mode(img.shape[1], img.shape[0])
+            sfc = pygame.surfarray.make_surface(img.swapaxes(0, 1))
             self._viewer.blit(sfc, (0, 0))
             pygame.display.update()
             return img
