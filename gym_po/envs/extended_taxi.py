@@ -259,7 +259,7 @@ class TaxiVecEnv(gym.Env):
             if self._viewer is None:
                 pygame.init()
                 self._viewer = pygame.display.set_mode(img.shape[:-1])
-            sfc = pygame.surfarray.make_surface(img.swapaxes(0,1))
+            sfc = pygame.surfarray.make_surface(img.swapaxes(0, 1))
             self._viewer.blit(sfc, (0, 0))
             pygame.display.update()
             return img

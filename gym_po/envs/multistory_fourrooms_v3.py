@@ -10,7 +10,7 @@ from gym.vector.utils import batch_space
 
 from .action_utils import generate_action_probability_matrix, vectorized_multinomial_with_rng
 from .grid_utils import DIRECTIONS_3D_NP, get_coord_to_flat_function, get_flat_to_coord_function
-from .render_utils import COLORS, resize, CELL_PX
+from .render_utils import COLORS, resize, CELL_PX, tile_images
 
 # Fourrooms minus the external wall (13x13 -> 11x11)
 # Upstairs and downstairs locations marked by "U" and "D"
@@ -286,26 +286,34 @@ class MultistoryFourRoomsVecEnv(gym.Env):
         self._flat_grid_view = self._to_flat(g) - self._to_flat(offset_coord) # (1, obs_n, obs_n)
 
 
-    def render(self, mode="human"):
+    def render(self, mode="human", idx: Optional[Sequence[int]] = None):
         """Render environment as an rgb array, with highlighting of agent's view. If "human", render with pygame"""
-        a, g = self.agent[0], self.goal[0]
+        if idx is None: idx = np.arange(1)
+        idx = np.array(idx)
+        # zs = np.zeros_like(idx)
+        a, g = self.agent[idx], self.goal[idx]
         ag, gg = self._to_grid(a), self._to_grid(g)  # Grid coordinates
         img = self.img[ag[0]].copy()  # Get agent's floor
-        img[tuple(ag)[1:]] = GR_CNST_COLORS.agent  # Add agent (always same floor)
-        if gg[0] == ag[0]: img[tuple(gg)[1:]] = GR_CNST_COLORS.goal  # Add goal if on same floor
-        v = ag[1:]
+        img[(idx,) + tuple(ag)[1:]] = GR_CNST_COLORS.agent  # Add agent (always same floor)
+        goal_on_agent_floor = (gg[0] == ag[0])
+        img[(idx[goal_on_agent_floor],) + tuple(gg[:, goal_on_agent_floor])[1:]] = GR_CNST_COLORS.goal  # Add goal if on same floor
+        v = np.concatenate((idx[None, :], ag[1:]), axis=0)
         if self.obs_n == 1: # Hansen, render floor, highlight hansen grid
-            v = ag[1:, None] + self.ACTIONS[1:]
+            v = (ag[1:, None] + self.ACTIONS[1:][...,None]).reshape(2, -1)
+            idx = np.tile(idx, (1,4))
+            v = np.concatenate((idx, v), axis=0)
         elif self.obs_n > 1:
-            v = self._to_grid(self._last_grid_obs_coords[0])[1:]  # Use cached coordinates
+            v = self._to_grid(self._last_grid_obs_coords[idx]) # Use cached coordinates
+            v[0, idx] = idx[:,None,None]
         img[tuple(v)] += 40  # lighten
+        img = tile_images(img)  # Tile
         img = resize(img, CELL_PX)
         if mode in ('rgb_array', 'rgb'): return img
         else:
             import pygame
             if self._viewer is None:
                 pygame.init()
-                self._viewer = pygame.display.set_mode(img.shape[1], img.shape[0])
+                self._viewer = pygame.display.set_mode(img.shape[:-1])
             sfc = pygame.surfarray.make_surface(img.swapaxes(0, 1))
             self._viewer.blit(sfc, (0, 0))
             pygame.display.update()
