@@ -249,7 +249,7 @@ class TaxiVecEnv(gym.Env):
         text_space = 20
         img = str_map_to_img(img, hansen_highlight=self.hansen)
         img = np.concatenate((img, np.zeros((img.shape[0], text_space, img.shape[2]), dtype=np.uint8)), axis=1)
-        text_anchor = (0, img.shape[1] - text_space - 5)
+        text_anchor = (5, img.shape[1] - text_space)
         # Add last action
         text = f"  ({self.ACTION_NAMES[self.lastaction]})\n" if self.lastaction is not None else ''
         if text:

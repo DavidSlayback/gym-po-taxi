@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # o = e.reset()
     # img = e.render()
     e.metadata["video.frames_per_second"] = 60
-    # e = RecordVideo(e, video_folder='videos')
+    e = RecordVideo(e, video_folder='videos')
     # e = NormalizeReward(e, 0.95)
     # e = RecordEpisodeStatistics(e, 0.95)
     # e = NormalizeReward(e, 0.95)
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     o = e.reset()
     for t in range(100000):
         o, r, d, info = e.step(e.action_space.sample())
-        e.render(idx=np.arange(8))
+        # e.render(idx=np.arange(8))
         # if (r > 0).any(): print('Reward!')
         # e.render()
         # time.sleep(0.2)

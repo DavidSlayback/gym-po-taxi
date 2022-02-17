@@ -62,10 +62,11 @@ class RecordVideoWithText(RecordVideo):
             if dones:
                 self.episode_id += 1
         else:
-            if self.render_idx_size == 1:
-                if dones[0]: self.episode_id += 1  # Only logging 1 environment
-            else:
-                self.episode_id += self.dones[self.render_idx].sum()  # Logging dones from all these
+            if dones[0]: self.episode_id += 1
+            # if self.render_idx_size == 1:
+            #     if dones[0]: self.episode_id += 1  # Only logging 1 environment
+            # else:
+            #     self.episode_id += dones[self.render_idx].sum()  # Logging dones from all these
 
         if self.recording:
             self.video_recorder.capture_frame(self.text_to_render)
@@ -78,8 +79,9 @@ class RecordVideoWithText(RecordVideo):
                     if dones:
                         self.close_video_recorder()
                 else:
-                    if self.render_idx_size == 1 and dones[0]:
-                        self.close_video_recorder()
+                    if dones[0]: self.close_video_recorder()
+                    # if self.render_idx_size == 1 and dones[0]:
+                    #     self.close_video_recorder()
 
         elif self._video_enabled():
             self.start_video_recorder()
