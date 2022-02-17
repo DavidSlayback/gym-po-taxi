@@ -9,8 +9,8 @@ from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
 
 if __name__ == "__main__":
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
-    # e = TaxiVecEnv(8, num_passengers=2, hansen_obs=True, time_limit=2000, map=EXTENDED_TAXI_MAP)
-    e = MultistoryFourRoomsVecEnv(8, time_limit=1000, grid_z=3, obs_n=0, goal_floor=0)
+    e = TaxiVecEnv(8, num_passengers=2, hansen_obs=True, time_limit=2000, map=EXTENDED_TAXI_MAP)
+    # e = MultistoryFourRoomsVecEnv(8, time_limit=1000, grid_z=3, obs_n=0, goal_floor=0)
     # o = e.reset()
     # img = e.render()
     e.metadata["video.frames_per_second"] = 60

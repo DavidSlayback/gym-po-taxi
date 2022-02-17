@@ -242,7 +242,7 @@ class TaxiVecEnv(gym.Env):
         img[dc] = 'D'
         p_in_taxi = p == self.nlocs
         img[(idx, ) + tc] = 'T'
-        img[(np.array((~p_in_taxi).nonzero()), ) + pc] = 'P'
+        img[(~p_in_taxi).nonzero() + (pc[0][~p_in_taxi], pc[1][~p_in_taxi])] = 'P'
         img[idx[p_in_taxi], tc[0][p_in_taxi], tc[1][p_in_taxi]] = 'F'  # Full taxis
         same_coord = ~p_in_taxi & (pc[0] == tc[0]) & (pc[1] == tc[1])
         img[idx[same_coord], pc[0][same_coord], pc[1][same_coord]] = 'TP'  # Taxi in same spot
