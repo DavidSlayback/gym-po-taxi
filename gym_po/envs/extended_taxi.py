@@ -2,7 +2,7 @@ __all__ = ["TaxiVecEnv", "ExtendedTaxiVecEnv", "HansenTaxiVecEnv", "ExtendedHans
 
 """Extended (8x8) Taxi from https://harshakokel.com/pdf/DRePReL-workshop.pdf"""
 from functools import partial
-from typing import Sequence, Callable, Tuple
+from typing import Sequence, Callable, Tuple, Optional
 
 import cv2
 import gym
@@ -11,7 +11,7 @@ from gym.utils.seeding import np_random
 from gym.vector.utils import batch_space
 
 from .grid_utils import DIRECTIONS_2D_NP
-from .render_utils import CELL_PX, COLORS
+from .render_utils import CELL_PX, COLORS, tile_images
 
 # Original taxi map, but not quite, need the pseudo-walls
 TAXI_MAP = (
@@ -96,8 +96,8 @@ def get_locations_from_np_str_map(map: np.ndarray) -> Sequence[np.ndarray]:
 
 def str_map_to_img(map: np.ndarray, cell_pixel_size: int = CELL_PX, hansen_highlight: bool = False) -> np.ndarray:
     """Convert bordered string map to actual rendered image"""
-    y, x = map.shape
-    img = np.full((y, x, 3), 3, dtype=np.uint8)  # Fill value I don't use
+    n, y, x = map.shape[-3:]
+    img = np.full((*map.shape, 3), 3, dtype=np.uint8)  # Fill value I don't use
     img[map == '|'] = WALL
     img[map == 'P'] = PASSENGER
     img[map == 'T'] = TAXI
@@ -107,10 +107,12 @@ def str_map_to_img(map: np.ndarray, cell_pixel_size: int = CELL_PX, hansen_highl
     img[map == ' '] = FLOOR
     img[map == ':'] = FAKE_WALL
     img[(img == 3).all(-1)] = LOC
+    dir_idx = np.zeros((1, DIR.shape[-1]), dtype=int)
     if hansen_highlight:
-        tloc = np.array(((map == 'T') | (map == 'F')).nonzero())
-        hloc = tloc + DIR
+        tloc = np.array(((map == 'T') | (map == 'F') | (map == 'TP')).nonzero())
+        hloc = (tloc[:, None] + np.concatenate((dir_idx, DIR))[...,None]).reshape(3, -1)
         img[tuple(hloc)] += 64
+    img = tile_images(img)
     return cv2.resize(img, (y*cell_pixel_size, x*cell_pixel_size), interpolation=cv2.INTER_AREA)
 
 class TaxiVecEnv(gym.Env):
@@ -230,23 +232,24 @@ class TaxiVecEnv(gym.Env):
         return self._obs(), rew, done, [{}] * self.num_envs
 
 
-    def render(self, mode="human"):
+    def render(self, mode="human", idx: Optional[Sequence[int]] = None):
+        if idx is None: idx = np.arange(1)
+        idx = np.array(idx)
         img = self.desc.copy()
-        r, c, p, d = self.decode(self.s[0])
-        tc = self.cc(r, c); dc = self.cc(*self.np_locs[d].T)
+        img = np.stack(tuple(img for _ in range(idx.size)))
+        r, c, p, d = self.decode(self.s[idx])
+        tc = self.cc(r, c); dc = (idx,) + self.cc(*self.np_locs[d].T); pc = self.cc(*self.np_locs[p].T)
         img[dc] = 'D'
         p_in_taxi = p == self.nlocs
-        if p_in_taxi: img[tc] = 'F'
-        else:
-            pc = self.cc(*self.np_locs[p].T)
-            if pc == tc: img[pc] = 'TP'
-            else:
-                img[pc] = 'P'
-                img[tc] = 'T'
+        img[(idx, ) + tc] = 'T'
+        img[(np.array((~p_in_taxi).nonzero()), ) + pc] = 'P'
+        img[idx[p_in_taxi], tc[0][p_in_taxi], tc[1][p_in_taxi]] = 'F'  # Full taxis
+        same_coord = ~p_in_taxi & (pc[0] == tc[0]) & (pc[1] == tc[1])
+        img[idx[same_coord], pc[0][same_coord], pc[1][same_coord]] = 'TP'  # Taxi in same spot
         text_space = 20
         img = str_map_to_img(img, hansen_highlight=self.hansen)
-        img = np.concatenate((img, np.zeros((text_space, *img.shape[1:]), dtype=np.uint8)), axis=0)
-        text_anchor = (5, img.shape[0] - text_space)
+        img = np.concatenate((img, np.zeros((img.shape[0], text_space, img.shape[2]), dtype=np.uint8)), axis=1)
+        text_anchor = (0, img.shape[1] - text_space - 5)
         # Add last action
         text = f"  ({self.ACTION_NAMES[self.lastaction]})\n" if self.lastaction is not None else ''
         if text:
