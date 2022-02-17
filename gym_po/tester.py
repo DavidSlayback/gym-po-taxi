@@ -4,6 +4,7 @@ import numpy as np
 
 from wrappers import RecordEpisodeStatistics, NormalizeReward
 from envs import *
+from wrappers import RecordVideoWithText
 from gym.wrappers.record_video import RecordVideo
 from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
 
@@ -14,7 +15,8 @@ if __name__ == "__main__":
     # o = e.reset()
     # img = e.render()
     e.metadata["video.frames_per_second"] = 60
-    e = RecordVideo(e, video_folder='videos')
+    e = RecordVideoWithText(e, video_folder='videos', render_idx=np.arange(8))
+    # e = RecordVideo(e, video_folder='videos')
     # e = NormalizeReward(e, 0.95)
     # e = RecordEpisodeStatistics(e, 0.95)
     # e = NormalizeReward(e, 0.95)
