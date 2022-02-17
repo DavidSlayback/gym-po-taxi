@@ -20,7 +20,7 @@ class RecordVideoWithText(RecordVideo):
         video_folder: str,
         episode_trigger: Callable[[int], bool] = None,
         step_trigger: Callable[[int], bool] = None,
-        n_episode_trigger: Callable[[int], bool] = None,
+        # n_episode_trigger: Callable[[int], bool] = None,
         video_length: int = 0,
         name_prefix: str = "rl-video",
         text_space: int = 0,
