@@ -42,6 +42,7 @@ class RecordEpisodeStatistics(gym.Wrapper):
             dones = [dones]
         d_idx = np.flatnonzero(dones)
         nd = d_idx.size
+        infos = list(infos)
         if nd:
             for i in d_idx:
                 infos[i] = infos[i].copy()
