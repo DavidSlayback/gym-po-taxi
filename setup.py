@@ -1,6 +1,6 @@
 import os
 import fnmatch
-from setuptools import setup, find_namespace_packages, find_packages, fin
+from setuptools import setup, find_namespace_packages, find_packages
 
 def find_data_files(package_dir, patterns, excludes=()):
   """Recursively finds files whose names match the given shell patterns."""
@@ -31,7 +31,7 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
-        "Programming Language :: Python",
+        "Programming Language :: Python",W
         "Operating System :: POSIX",
         "Operating System :: MacOS :: MacOS X",
     ],
