@@ -39,7 +39,7 @@ setup(
     install_requires=["gym>=0.21.0", "numpy<1.22,>=1.21", "numba>=0.55.1", "pygame", "dotsi"],
     python_requires=">=3.8",
     package_data={
-        'dm_control':
+        'gym_po':
             find_data_files(
                 package_dir='gym_po',
                 patterns=['*.amc', '*.msh', '*.png', '*.skn', '*.stl', '*.xml',
