@@ -14,12 +14,12 @@ from gym.envs.registration import register
 
 register(
     id='pdomains-ant-heaven-hell-v0',
-    entry_point='envs.ant_heaven_hell:AntHeavenHellEnv',
+    entry_point='gym_po.envs.ant_heaven_hell:AntHeavenHellEnv',
     max_episode_steps=400,
 )
 
 register(
     id='pdomains-ant-tag-v0',
-    entry_point='envs.ant_tag:AntTagEnv',
+    entry_point='gym_po.envs.ant_tag:AntTagEnv',
     max_episode_steps=400,
 )
