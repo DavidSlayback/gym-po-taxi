@@ -13,6 +13,7 @@ class AntTagEnv(MujocoEnv, EzPickle):
                  frame_skip: int = 15,
                  seed: Optional[int] = None
                  ):
+        EzPickle.__init__(**locals())
         initial_joint_ranges = np.stack([[-4.5, -4.5, 0.55, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, -1.0, 0.0, 1.0] + ([0.] * 14)  for _ in range(2)], axis=1)
         initial_joint_ranges[:2, 1] = np.array([4.5, 4.5])  # x,y positions of ant
         self._init_state_space = initial_joint_ranges

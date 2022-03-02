@@ -1,18 +1,19 @@
+from typing import Optional
 import operator
 from pathlib import Path
 import gym
 import numpy as np
 from gym import spaces
-from gym.utils import seeding
-import mujoco_py
+from gym.utils import seeding, EzPickle
+from .mujoco_env import MujocoEnv
 
-class BoxEnv(gym.Env):
-
-    def __init__(self, rendering=False, seed=None):
-        """
-        """
-
-        super(BoxEnv, self).__init__()
+class BoxEnv(MujocoEnv, EzPickle):
+    def __init__(self,
+                 xml_file: str = "two_boxes.xml",
+                 frame_skip: int = 15,
+                 seed: Optional[int] = None
+                 ):
+        EzPickle.__init__(**locals())
 
         # X range
         self.x_left_limit = 0
@@ -27,27 +28,19 @@ class BoxEnv(gym.Env):
         self.rboundary = 60
 
         self.action_dim = 1
-
-        #################### END CONFIGS #######################
-
-        # mujoco-py
-        xml_path = Path(__file__).resolve().parent / 'assets' / 'two_boxes.xml'
-        self.model = mujoco_py.load_model_from_path(str(xml_path))
-        self.sim = mujoco_py.MjSim(self.model)
-        self.viewer = None  # Initializes only when self.render() is called.
-        self.rendering = rendering
-
         # Constants
         self.FINGER_TIP_OFFSET = 0.375
+        self.seed(seed)
+        MujocoEnv.__init__(self, xml_file, frame_skip)
 
         # MuJoCo
         # bodies
-        self.gripah_bid = self.model.body_name2id('gripah-base')
-        self.small_box_bid = self.model.body_name2id('small_box')
-        self.small_box_2_bid = self.model.body_name2id('small_box_2')
+        self.gripah_bid = self.model.body_name2id('gripah-base', 'body')
+        self.small_box_bid = self.model.body_name2id('small_box', 'body')
+        self.small_box_2_bid = self.model.body_name2id('small_box_2', 'body')
 
-        self.big_box_bid = self.model.body_name2id('big_box')
-        self.big_box_2_bid = self.model.body_name2id('big_box_2')
+        self.big_box_bid = self.model.body_name2id('big_box', 'body')
+        self.big_box_2_bid = self.model.body_name2id('big_box_2', 'body')
 
         self.lregion_bid = self.model.site_name2id('left_boundary')
         self.rregion_bid = self.model.site_name2id('right_boundary')        
@@ -95,10 +88,6 @@ class BoxEnv(gym.Env):
 
         # The finger is always soft
         self.model.jnt_stiffness[self.hinge_wide_finger_id] = self.low_stiffness
-
-        # numpy random
-        self.np_random = None
-        self.seed(seed)
 
     def reset(self):
         """
