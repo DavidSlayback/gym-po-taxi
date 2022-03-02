@@ -1,7 +1,6 @@
 import numpy as np
 import gym
-from numba import njit, float64
-from numba.experimental import jitclass
+from numba import njit
 
 
 # taken from https://github.com/openai/baselines/blob/master/baselines/common/vec_env/vec_normalize.py

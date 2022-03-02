@@ -1,0 +1,2 @@
+include MANIFEST.in *.md *.txt
+recursive-include envs *.*
