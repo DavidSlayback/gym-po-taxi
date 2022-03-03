@@ -69,9 +69,9 @@ class AntHeavenHellEnv(MujocoEnv, EzPickle):
         priest_in_range = distances[2] <= self._r
         heaven_dist = distances[int(max(self.heaven_direction, 0))]
         if done:  # In range of heaven or hell
-            if heaven_dist <= self._r: r = 0.
-            else: r = -10.
-        else: r = -1.
+            if heaven_dist <= self._r: r = 1.
+            else: r = -1.
+        else: r = 0.
 
         return self._get_obs(priest_in_range), r, done, {}
 

@@ -79,11 +79,11 @@ class AntTagEnv(MujocoEnv, EzPickle):
         # Move 2 spheres along the ant
         self.sim.data.mocap_pos[1:3, :2] = ant_pos
         done = False
-        env_reward = -1
+        env_reward = 0.
         # + reward and terminate the episode if can tag the target
         d2target = np.linalg.norm(ant_pos - self.sim.data.mocap_pos[0, :2])
         if (d2target <= self.tag_radius):
-            env_reward = 0
+            env_reward = 1.
             done = True
 
         return self._get_obs(d2target < self.visible_radius), env_reward, done, {}
