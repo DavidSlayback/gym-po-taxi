@@ -26,7 +26,7 @@ def find_data_files(package_dir, patterns, excludes=()):
 
 setup(
     name="gym_po",
-    version="0.0.2",
+    version="0.0.3",
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Development Status :: 3 - Alpha",
