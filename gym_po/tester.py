@@ -5,10 +5,17 @@ import numpy as np
 from envs import *
 from gym.wrappers.record_video import RecordVideo
 from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
-from envs.ant_tag import AntTagEnv
+# from envs.ant_tag import AntTagEnv
+import torch
+v = torch.ones(1, device='cuda')
+from brax import envs
+from brax.envs import to_torch
 
 if __name__ == "__main__":
-    e = AntTagEnv()
+    env = envs.create_gym_env('walker2d', 20)
+    env = to_torch.JaxToTorchWrapper(env, device='cuda')
+    o = env.reset()
+    # e = AntTagEnv()
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
     # e = TaxiVecEnv(8, num_passengers=2, hansen_obs=True, time_limit=2000, map=EXTENDED_TAXI_MAP)
     # e = MultistoryFourRoomsVecEnv(8, time_limit=1000, grid_z=3, obs_n=0, goal_floor=0)
