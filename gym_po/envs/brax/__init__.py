@@ -1,1 +1,0 @@
-"""Contains modified Brax environments"""

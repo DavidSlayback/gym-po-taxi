@@ -7,6 +7,11 @@ GREEN = [0, 1, 0, 0.5]
 RED = [1, 0, 0, 0.5]
 
 class AntHeavenHellEnv(MujocoEnv, EzPickle):
+    """HeavenHell, but for an "ant" robot
+
+    Ant starts at bottom of T-maze. Navigates to priest located in center of top of T. While in range of priest, ant
+    can observe which direction is heaven or hell
+    """
     def __init__(self,
                  xml_file: str = "ant_heaven_hell.xml",
                  frame_skip: int = 15,
