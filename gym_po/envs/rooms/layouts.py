@@ -1,5 +1,6 @@
+__all__ = ['LAYOUTS', 'layout_to_np', 'np_to_grid', 'ENDS', 'STARTS']
+from typing import Tuple
 import numpy as np
-
 # Various ROOMs layouts
 LAYOUTS = {
     '1': '''xxxxxxxxxxxxx
@@ -111,7 +112,24 @@ LAYOUTS = {
              xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'''
 }
 WALL_CHAR = 'x'
-
+ENDS = {
+    '1': (11, 11),
+    '2': (11, 11),
+    '4': (15, 15),
+    '8': (23, 11),
+    '10': (29, 11),
+    '16': (47, 11),
+    '32': (47, 32),
+}
+STARTS = {
+    '1': (1, 1),
+    '2': (1, 1),
+    '4': (1, 1),
+    '8': (1, 1),
+    '10': (1, 1),
+    '16': (1, 1),
+    '32': (1, 1),
+}
 
 def layout_to_np(layout: str) -> np.ndarray:
     """Convert layout string to numpy char array"""
@@ -128,47 +146,3 @@ def np_to_grid(np_layout: np.ndarray) -> np.ndarray:
         grid[np_layout == a] = i
     return grid
 
-
-def grid_to_coord(grid_xy: np.ndarray, cell_size: float = 1.) -> np.ndarray:
-    """Convert grid x,y to coordinate xy (middle of given grid square)"""
-    return (grid_xy * cell_size) + (cell_size / 2)
-
-
-def coord_to_grid(coord_xy: np.ndarray, cell_size: float = 1.) -> np.ndarray:
-    """Convert x,y coordinate to nearest grid square"""
-    return np.round(coord_xy / cell_size).astype(int)
-
-# N, NE, E, SE, S, SW, W, NW
-ACTIONS = np.array([
-    [-1, 0], [-1, 1], [0, 1], [1, 1],
-    [1, 0], [1, -1], [0, -1], [-1, -1],
-])
-
-
-from .action_utils import vectorized_multinomial_with_rng
-def create_action_probability_matrix(action_n: int = 8, action_failure_probability: float = 0.2):
-    """Create action probability matrix for sampling"""
-    probs = np.full((action_n, action_n), action_failure_probability / (action_n - 1), dtype=np.float64)
-    np.fill_diagonal(probs, 1 - action_failure_probability)
-    return probs
-
-
-def add_gaussian_noise(actions: np.ndarray, action_std: float = 0.2, rng: np.random.Generator = np.random.default_rng()) -> np.ndarray:
-    """Add gaussian noise to continuous action. Sample per environment"""
-    return actions + rng.normal(0., action_std, actions.shape)
-
-
-def randomize_action_sign(actions: np.ndarray, action_failure_probability: float = 0.2, rng: np.random.Generator = np.random.default_rng()) -> np.ndarray:
-    """Akin to randomly failing discrete actions. Take input actions, and if failure, flip signs"""
-    sign_flips = rng.random(actions.shape[0]) <= action_failure_probability
-    multipliers = np.ones_like(actions)
-    multipliers[(rng.random(actions.shape) > 0.5) & sign_flips[:, None]] = -1
-    actions *= multipliers
-    return actions
-
-
-if __name__ == "__main__":
-    map = '10'
-    test1 = layout_to_np(LAYOUTS[map])
-    test2 = np_to_grid(test1)
-    print(3)

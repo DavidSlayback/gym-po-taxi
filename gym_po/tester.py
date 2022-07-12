@@ -4,7 +4,8 @@ import numpy as np
 
 from envs import *
 from gym.wrappers.record_video import RecordVideo
-from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
+from envs.rooms.rooms import Rooms
+# from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
 # from envs.ant_tag import AntTagEnv
 import torch
 v = torch.ones(1, device='cuda')
@@ -12,9 +13,10 @@ from brax import envs
 from brax.envs import to_torch
 
 if __name__ == "__main__":
-    env = envs.create_gym_env('walker2d', 20)
-    env = to_torch.JaxToTorchWrapper(env, device='cuda')
-    o = env.reset()
+    # env = envs.create_gym_env('walker2d', 20)
+    # env = to_torch.JaxToTorchWrapper(env, device='cuda')
+    e = Rooms(16)
+    o = e.reset()
     # e = AntTagEnv()
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
     # e = TaxiVecEnv(8, num_passengers=2, hansen_obs=True, time_limit=2000, map=EXTENDED_TAXI_MAP)
@@ -30,7 +32,6 @@ if __name__ == "__main__":
     # o = e.reset()
     # on = e.single_observation_space.n
     # assert (o <= on).all()
-    o = e.reset()
     for t in range(100000):
         o, r, d, info = e.step(e.action_space.sample())
         e.render()
