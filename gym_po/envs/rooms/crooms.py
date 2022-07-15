@@ -12,16 +12,33 @@ from .actions import *
 from .observations import *
 
 
-class Rooms(gym.Env):
-    """Basic ROOMS domain adapted from "Markovian State and Action Abstraction"
+def get_room_obs(agent_yx: np.ndarray, room_or_state_grid: np.ndarray, goal_yx: np.ndarray, cell_size: float = 1.) -> np.ndarray:
+    """Get room/state that agent(s) is in"""
+    return room_or_state_grid[tuple(coord_to_grid(agent_yx, cell_size).T)]
+
+
+def get_lidar_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, n_bins: int = 8, obs_m: float = 3., cell_size: float = 1.) -> np.ndarray:
+    """Get rangefinder observation from agent"""
+    angles = np.arange(0, n_bins, 360 / n_bins)
+    # Fill in goal
+    relative_yx = goal_yx - agent_yx
+    goal_in_range = ((goal_yx - agent_yx) ** 2).sum(-1) <= obs_m  # Goal is within observation range
+    obs = np.zeros((agent_yx.shape[0], n_bins + 2))
+    obs[goal_in_range] = relative_yx
+    # TODO: Fill in distance to nearest wall in each direction
+    return obs
+
+class CRooms(gym.Env):
+    """Basic CROOMS domain adapted from "Markovian State and Action Abstraction"
     
     See https://github.com/aijunbai/hplanning for official repo
-    This is a vectorized version of the ROOMs domain.
+    This is a vectorized version of the C-ROOMs domain.
     """
-    metadata = {"name": "Rooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
-    def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500,
-                 obs_type: str = 'hansen', obs_n: int = 3, action_failure_probability: float = 0.2, action_type: str = 'ordinal',
-                 agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
+    metadata = {"name": "C-Rooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
+    def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500, use_velocity: bool = False, cell_size: float = 1.,
+                 obs_type: str = 'lidar', obs_m: int = 3, obs_bins: int = 8,
+                 action_failure_probability: float = 0.2, action_type: str = 'ordinal', action_std: float = 0.2,
+                 agent_xy: Optional[Sequence[float]] = None, goal_xy: Optional[Sequence[float]] = (0., 0.),
                  step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
                  ):
         """
@@ -29,11 +46,18 @@ class Rooms(gym.Env):
             num_envs: Number of environments
             layout: Key to layouts, one of '1', '2', '4', '8', '10', '16', '32'
             time_limit: Max time before episode terminates
-            obs_type: Type of observation. One of 'discrete', 'hansen', 'hansen8', 'vector_hansen', 'vector_hansen8', 'room', 'grid'
-                hansen is 4 adjacent <empty|wall|goal>, hansen8 is 8. room treats each room as an obs
-            obs_n: Only applies if 'grid' observation. Dictates nxn observation grid (centered on agent)
+            use_velocity: If true, agent actions alter velocity which adjusts position. If false, actions just move agent without inertia.
+            cell_size: Size of a grid cell, in meters
+            obs_type: Type of observation.
+                'discrete': Integer grid square
+                'room': Integer room number
+                'lidar': [bins+2,] vector of range to nearest wall, then 2D for relative xy position of goal
+            obs_m: Range of observation (m). If wall/goal is out of range, that bin will be 0
+            obs_bins: Number of observation bins
+
             action_failure_probability: Likelihood that taking one action fails and chooses another
-            action_type: 'ordinal' (8D compass) or 'cardinal (4D compass)
+            action_type: 'ordinal' (8D compass) or 'cardinal' (4D compass) or 'xy' (2D continuous)
+            action_std: Standard deviation of action error (sampled from normal distribution)
             agent_xy: Optionally, provide a fixed (x, y) agent location used every reset. Defaults to random
             goal_xy: Optionally, provide a fixed (x, y) goal location used every reset.
                 If you give invalid coordinate (e.g., (0,0) is a wall), uses default goal from layouts.
@@ -48,26 +72,15 @@ class Rooms(gym.Env):
         self.gridshape = np.array(grid.shape)
         if obs_type == 'discrete':
             n, state_grid = get_number_discrete_states_and_conversion(grid)
-            self.single_observation_space = gym.spaces.Discrete(int(n))
-            self._get_obs = lambda agent_yx, gr, goal: state_grid[tuple(agent_yx.T)]  # + state_grid[tuple(goal.T)]
-        elif 'hansen' in obs_type:
-            base_n = 8 if '8' in obs_type else 4
-            if 'vector' in obs_type:
-                hobs_fn = partial(get_hansen_vector_obs, hansen_n=base_n)
-                self.single_observation_space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
-            else:
-                hobs_fn = partial(get_hansen_obs, hansen_n=base_n)
-                n = (2 ** base_n) * (base_n + 1)  # base_n squares, 2 possibilities each, base_n + 1 possibilities for goal
-                self.single_observation_space = gym.spaces.Discrete(n)
-            self._get_obs = lambda agent_yx, gr, goal: hobs_fn(agent_yx, gr, goal)
+            self.single_observation_space = gym.spaces.Discrete(n)
+            self._get_obs = lambda agent_yx, gr, goal: partial(get_room_obs, cell_size=cell_size)(agent_yx, state_grid, goal)
         elif obs_type == 'room':
             n = get_number_abstract_states(grid)
             self.single_observation_space = gym.spaces.Discrete(n)
-            self._get_obs = lambda agent_yx, gr, goal: grid[tuple(agent_yx.T)]
-        else:  # Grid observations
-            self.single_observation_space = gym.spaces.Box(0, 2, (obs_n, obs_n), dtype=int)
-            gobs_fn = partial(get_grid_obs, n=obs_n)
-            self._get_obs = lambda agent_yx, gr, goal: gobs_fn(agent_yx, gr, goal)
+            self._get_obs = lambda agent_yx, gr, goal: partial(get_room_obs, cell_size=cell_size)(agent_yx, gr, goal)
+        else:
+            self.single_observation_space = gym.spaces.Box(0, obs_m, (obs_bins + 2,))
+            self._get_obs = lambda agent_yx, gr, goal: ...
         self.valid_states = np.flatnonzero(grid >= 0)  # Places where we can put goal or agent
         self.rng, _ = seeding.np_random()
 
