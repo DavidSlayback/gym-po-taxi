@@ -36,7 +36,7 @@ class CRooms(gym.Env):
     """
     metadata = {"name": "C-Rooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500, use_velocity: bool = False, cell_size: float = 1.,
-                 obs_type: str = 'lidar', obs_m: int = 3, obs_bins: int = 8,
+                 obs_type: str = 'discrete', obs_m: int = 3, obs_bins: int = 8,
                  action_failure_probability: float = 0.2, action_type: str = 'ordinal', action_std: float = 0.2,
                  agent_xy: Optional[Sequence[float]] = None, goal_xy: Optional[Sequence[float]] = (0., 0.),
                  step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
@@ -51,6 +51,8 @@ class CRooms(gym.Env):
             obs_type: Type of observation.
                 'discrete': Integer grid square
                 'room': Integer room number
+                'cont_discrete': (y,x) position
+                'hansen/hansen8': Integer adjacent grid squares
                 'lidar': [bins+2,] vector of range to nearest wall, then 2D for relative xy position of goal
             obs_m: Range of observation (m). If wall/goal is out of range, that bin will be 0
             obs_bins: Number of observation bins
@@ -78,7 +80,20 @@ class CRooms(gym.Env):
             n = get_number_abstract_states(grid)
             self.single_observation_space = gym.spaces.Discrete(n)
             self._get_obs = lambda agent_yx, gr, goal: partial(get_room_obs, cell_size=cell_size)(agent_yx, gr, goal)
-        else:
+        elif obs_type == 'cont_discrete':
+            self.single_observation_space = gym.spaces.Box(0, self.gridshape, (2, ))
+            self._get_obs = lambda agent_yx, gr, goal: agent_yx
+        elif 'hansen' in obs_type and 'cont' not in obs_type:
+            base_n = 8 if '8' in obs_type else 4
+            if 'vector' in obs_type:
+                hobs_fn = partial(get_hansen_vector_obs, hansen_n=base_n)
+                self.single_observation_space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
+            else:
+                hobs_fn = partial(get_hansen_obs, hansen_n=base_n)
+                n = (2 ** base_n) * (base_n + 1)  # base_n squares, 2 possibilities each, base_n + 1 possibilities for goal
+                self.single_observation_space = gym.spaces.Discrete(n)
+            self._get_obs = lambda agent_yx, gr, goal: hobs_fn(agent_yx, gr, goal)
+        else:  # lidar
             self.single_observation_space = gym.spaces.Box(0, obs_m, (obs_bins + 2,))
             self._get_obs = lambda agent_yx, gr, goal: ...
         self.valid_states = np.flatnonzero(grid >= 0)  # Places where we can put goal or agent
@@ -130,6 +145,7 @@ class CRooms(gym.Env):
         self.elapsed = np.zeros(self.num_envs, int)
         self.goal_yx = self._sample_goal(self.num_envs, self.rng)
         self.agent_yx = self._sample_agent(self.num_envs, self.rng)
+        self.agent_yx_velocity = np.zeros((self.num_envs, 2))
         obs = self._get_obs(self.agent_yx, self.grid, self.goal_yx)
         return obs
 
