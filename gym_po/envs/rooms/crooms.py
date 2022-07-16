@@ -44,7 +44,7 @@ class CRooms(gym.Env):
         """
         Args:
             num_envs: Number of environments
-            layout: Key to layouts, one of '1', '2', '4', '8', '10', '16', '32'
+            layout: Key to layouts, one of '1', '2', '4', '4b', '8', '8b', '10', '10b', '16', '16b', '32', '32b'
             time_limit: Max time before episode terminates
             use_velocity: If true, agent actions alter velocity which adjusts position. If false, actions just move agent without inertia.
             cell_size: Size of a grid cell, in meters

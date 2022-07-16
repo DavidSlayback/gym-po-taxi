@@ -27,7 +27,7 @@ class Rooms(gym.Env):
         """
         Args:
             num_envs: Number of environments
-            layout: Key to layouts, one of '1', '2', '4', '8', '10', '16', '32'
+            layout: Key to layouts, one of '1', '2', '4', '4b', '8', '8b', '10', '10b', '16', '16b', '32', '32b'
             time_limit: Max time before episode terminates
             obs_type: Type of observation. One of 'discrete', 'hansen', 'hansen8', 'vector_hansen', 'vector_hansen8', 'room', 'grid'
                 hansen is 4 adjacent <empty|wall|goal>, hansen8 is 8. room treats each room as an obs
@@ -44,6 +44,7 @@ class Rooms(gym.Env):
         assert layout in LAYOUTS
         self.metadata['name'] += f'_{layout}_{action_type}'
         grid = np_to_grid(layout_to_np(LAYOUTS[layout]))
+        if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
         self.gridshape = np.array(grid.shape)
         if obs_type == 'discrete':

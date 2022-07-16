@@ -15,7 +15,7 @@ from brax.envs import to_torch
 if __name__ == "__main__":
     # env = envs.create_gym_env('walker2d', 20)
     # env = to_torch.JaxToTorchWrapper(env, device='cuda')
-    e = Rooms(16, '8', obs_type='grid')
+    e = Rooms(16, '8b', obs_type='grid')
     o = e.reset()
     # e = AntTagEnv()
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
