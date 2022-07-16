@@ -1,5 +1,5 @@
 __all__ = ['get_hansen_obs', 'get_number_discrete_states_and_conversion', 'get_number_abstract_states', 'get_grid_obs', 'get_hansen_vector_obs']
-from typing import Tuple
+from typing import Tuple, Optional
 import numpy as np
 from .actions import ACTIONS_CARDINAL, ACTIONS_ORDINAL
 
@@ -79,7 +79,7 @@ def get_grid_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, n:
     return squares
 
 
-def get_hansen_vector_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, hansen_n: int = 8) -> np.ndarray:
+def get_hansen_vector_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: Optional[np.ndarray] = None, hansen_n: int = 8) -> np.ndarray:
     """Same as above, but a vector representation (like the grid obs, but flattened)
 
     Args:
@@ -93,11 +93,12 @@ def get_hansen_vector_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.nd
     a = ACTIONS_CARDINAL if hansen_n == 4 else ACTIONS_ORDINAL
     a = a[None, :]
     coords = agent_yx[:, None] + a
-    is_goal = (goal_yx[:, None] == coords).all(-1)
     squares = grid[tuple(coords.transpose(2,0,1))]
     squares += 1
     squares[squares > 0] = 1  # Empty squares
-    squares[is_goal] = 2  # Add goal
+    if goal_yx is not None:
+        is_goal = (goal_yx[:, None] == coords).all(-1)
+        squares[is_goal] = 2  # Add goal
     return squares
 
 
