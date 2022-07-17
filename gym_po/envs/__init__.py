@@ -3,6 +3,8 @@ from .extended_taxi import TaxiVecEnv, HansenTaxiVecEnv, ExtendedHansenTaxiVecEn
     ExtendedTaxiVecEnv, TAXI_MAP
 from .multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv, HansenMultistoryFourRoomsVecEnv, \
     GridMultistoryFourRoomsVecEnv
+from .rooms.rooms import Rooms
+from .rooms.crooms import CRooms
 
 from gym.envs.registration import register
 

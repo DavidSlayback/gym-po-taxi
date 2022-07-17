@@ -42,12 +42,12 @@ class Rooms(gym.Env):
             goal_reward: Reward for reaching goal
         """
         assert layout in LAYOUTS
-        self.metadata['name'] += f'_{layout}_{action_type}'
+        self.metadata['name'] += f'_{layout}_{action_type}_{obs_type}'
         grid = np_to_grid(layout_to_np(LAYOUTS[layout]))
         if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
         self.gridshape = np.array(grid.shape)
-        if obs_type == 'discrete':
+        if 'discrete' in obs_type:
             n, state_grid = get_number_discrete_states_and_conversion(grid)
             self.single_observation_space = gym.spaces.Discrete(int(n))
             self._get_obs = lambda agent_yx, gr, goal: state_grid[tuple(agent_yx.T)]  # + state_grid[tuple(goal.T)]

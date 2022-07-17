@@ -11,6 +11,7 @@ from .utils import *
 from .actions import *
 from .observations import *
 
+
 def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_m: int, cell_size: float = 1.) -> Tuple[gym.Space, Callable[[np.ndarray, np.ndarray],np.ndarray]]:
     """Return space and an observation function"""
     is_cont = 'cont' in obs_type
@@ -79,7 +80,7 @@ class CRooms(gym.Env):
     See https://github.com/aijunbai/hplanning for official repo
     This is a vectorized version of the C-ROOMs domain.
     """
-    metadata = {"name": "C-Rooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
+    metadata = {"name": "CRooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500, use_velocity: bool = False, cell_size: float = 1.,
                  obs_type: str = 'discrete', obs_m: int = 3, obs_bins: int = 8,
                  action_failure_probability: float = 0.2, action_type: str = 'yx', action_std: float = 0.2, action_power: float = 1.,
@@ -91,7 +92,7 @@ class CRooms(gym.Env):
             num_envs: Number of environments
             layout: Key to layouts, one of '1', '2', '4', '4b', '8', '8b', '10', '10b', '16', '16b', '32', '32b'
             time_limit: Max time before episode terminates
-            use_velocity: If true, agent actions alter velocity which adjusts position. If false, actions just move agent without inertia.
+            use_velocity: If true, agent actions alter velocity which adjusts position. If false, actions just move agent without inertia. TODO: Velocity as part of observation
             cell_size: Size of a grid cell, in meters
             obs_type: Type of observation.
                 'discrete': Integer grid square
@@ -115,7 +116,7 @@ class CRooms(gym.Env):
             goal_threshold: Threshold for being in range of goal
         """
         assert layout in LAYOUTS
-        self.metadata['name'] += f'_{layout}_{action_type}'
+        self.metadata['name'] += f'_{layout}_{action_type}_{obs_type}'
         grid = np_to_grid(layout_to_np(LAYOUTS[layout]))
         if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
@@ -123,7 +124,7 @@ class CRooms(gym.Env):
         self.single_observation_space, self._get_obs = get_observation_space_and_function(obs_type, self.grid, obs_m, cell_size)
         self.valid_states = np.flatnonzero(grid >= 0)  # Places where we can put goal or agent
         self.rng, _ = seeding.np_random()
-        self.max_velocity = -5.
+        self.max_velocity = 5.
 
         # Different action spaces and random modifiers
         if action_type == 'yx':
@@ -226,19 +227,21 @@ class CRooms(gym.Env):
         If we attempt to enter a wall square, set velocity to 0 and sample a random point in current square"""
         if self.use_velocity:
             self.agent_yx_velocity += randomized_a_yx
+            self.agent_yx_velocity.clip(-self.max_velocity, self.max_velocity, self.agent_yx_velocity)
             proposed_yx = self.agent_yx + self.agent_yx_velocity
         else: proposed_yx = self.agent_yx + randomized_a_yx
+        proposed_yx = proposed_yx.clip(0, self.gridshape - 1 - 1e-6)  # Make sure we're still in grid
         oob = self._out_of_bounds(proposed_yx)
         self.agent_yx[~oob] = proposed_yx[~oob]  # Valid actions
         if oob.any():  # TODO: Put agent in nearest valid grid square to proposed_yx, remove velocity
             inv_ayx = grid_to_coord(coord_to_grid(self.agent_yx[oob], self.cell_size), self.cell_size)  # Invalid coordinates, resample such that agent stays in current square
             self.agent_yx[oob] = np.clip(inv_ayx + self.rng.normal(scale=0.5, size=inv_ayx.shape), inv_ayx - self.cell_size / 2, inv_ayx + self.cell_size / 2 - 1e-8)
-            self.agent_yx_velocity[oob] = 0.
+            self.agent_yx_velocity[oob] = 0.  # This is why we compute oob, so we can reset velocity where needed
         return oob
 
     def _out_of_bounds(self, proposed_yx: np.ndarray):
         """Return whether given coordinates correspond to empty/goal square.
 
         Rooms are surrounded by walls, so only need to check this"""
-        pyx = coord_to_grid(proposed_yx.clip(0, self.gridshape - 1 - 1e-8), self.cell_size)  # Continuous actions might takes us out of grid if we're going super fast
+        pyx = coord_to_grid(proposed_yx, self.cell_size)  # Continuous actions might takes us out of grid if we're going super fast
         return self.grid[tuple(pyx.T)] == -1

@@ -16,7 +16,7 @@ from brax.envs import to_torch
 if __name__ == "__main__":
     # env = envs.create_gym_env('walker2d', 20)
     # env = to_torch.JaxToTorchWrapper(env, device='cuda')
-    e = CRooms(16, '8b', obs_type='hansen')
+    e = Rooms(16, '8b', obs_type='cont_goal_discrete', action_type='yx')
     o = e.reset()
     # e = AntTagEnv()
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     # assert (o <= on).all()
     for t in range(100000):
         o, r, d, info = e.step(e.action_space.sample())
-        print(o)
+        if d.any(): print(d.nonzero()[0], r[d.nonzero()[0]])
         # e.render()
         # e.render(idx=np.arange(8))
         # if (r > 0).any(): print('Reward!')
