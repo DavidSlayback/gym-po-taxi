@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple, Optional, Union, Sequence
+from typing import Tuple, Optional, Union, Sequence, Callable
 import numpy as np
 import gym
 from gym.core import ActType, ObsType
@@ -12,6 +12,55 @@ from .actions import *
 from .observations import *
 
 
+def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_n: int) -> Tuple[gym.Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
+    """Return space and an observation function"""
+    is_vector = 'vector' in obs_type
+    has_goal = 'goal' in obs_type
+    a_max = np.array(grid.shape) - 2  # Max value of agent's observation
+    if 'room' in obs_type:  # No continuous variant
+        n = get_number_abstract_states(grid)
+        if has_goal:  # Discrete state for agent AND goal combined
+            space = gym.spaces.Discrete(int(n ** 2))
+            obs = lambda ayx, gyx: grid[tuple(ayx.T)] + n * grid[tuple(gyx.T)]
+        else:
+            space = gym.spaces.Discrete(int(n))
+            obs = lambda ayx, gyx: grid[tuple(ayx.T)]
+    elif 'mdp' in obs_type:
+        if is_vector:  # Vector observation of position(s)
+            if has_goal:
+                space = gym.spaces.Box(1, np.tile(a_max, 2), (4,), dtype=int)
+                obs = lambda ayx, gyx: np.concatenate((ayx, gyx), -1)
+            else:
+                space = gym.spaces.Box(1, a_max, (2,), dtype=int)
+                obs = lambda ayx, gyx: ayx
+        else:
+            n, state_grid = get_number_discrete_states_and_conversion(grid)
+            if has_goal:
+                space = gym.spaces.Discrete(int(n ** 2))
+                obs = lambda ayx, gyx: state_grid[tuple(ayx.T)] + n * state_grid[tuple(gyx.T)]
+            else:
+                space = gym.spaces.Discrete(int(n))
+                obs = lambda ayx, gyx: state_grid[tuple(ayx.T)]
+    elif 'hansen' in obs_type:  # No continuous. Cont converts to outputting a vector instead of scalar
+        base_n = 8 if '8' in obs_type else 4
+        if is_vector:
+            if has_goal:
+                space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
+                obs = lambda ayx, gyx: get_hansen_vector_obs(ayx, grid, gyx, base_n)
+            else:
+                space = gym.spaces.Box(0, 1, (base_n,), dtype=int)
+                obs = lambda ayx, gyx: get_hansen_vector_obs(ayx, grid, None, base_n)
+        else: # No goal
+            space = gym.spaces.Discrete(int(2 ** base_n * (base_n + 1)))
+            obs = lambda ayx, gyx: get_hansen_obs(ayx, grid, gyx, base_n)
+    elif 'grid' in obs_type: # No continuous, no has goal
+        space = gym.spaces.Box(0, 2, (obs_n, obs_n), dtype=int)
+        obs = lambda ayx, gyx: get_grid_obs(ayx, grid, gyx, obs_n)
+    else:
+        raise NotImplementedError('Observation type not recognized')
+    return space, obs
+
+
 class Rooms(gym.Env):
     """Basic ROOMS domain adapted from "Markovian State and Action Abstraction"
     
@@ -20,7 +69,7 @@ class Rooms(gym.Env):
     """
     metadata = {"name": "Rooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500,
-                 obs_type: str = 'hansen', obs_n: int = 3, action_failure_probability: float = 0.2, action_type: str = 'ordinal',
+                 obs_type: str = 'mdp', obs_n: int = 3, action_failure_probability: float = 0.2, action_type: str = 'ordinal',
                  agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
                  step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
                  ):
@@ -47,28 +96,7 @@ class Rooms(gym.Env):
         if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
         self.gridshape = np.array(grid.shape)
-        if 'discrete' in obs_type:
-            n, state_grid = get_number_discrete_states_and_conversion(grid)
-            self.single_observation_space = gym.spaces.Discrete(int(n))
-            self._get_obs = lambda agent_yx, gr, goal: state_grid[tuple(agent_yx.T)]  # + state_grid[tuple(goal.T)]
-        elif 'hansen' in obs_type:
-            base_n = 8 if '8' in obs_type else 4
-            if 'vector' in obs_type:
-                hobs_fn = partial(get_hansen_vector_obs, hansen_n=base_n)
-                self.single_observation_space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
-            else:
-                hobs_fn = partial(get_hansen_obs, hansen_n=base_n)
-                n = (2 ** base_n) * (base_n + 1)  # base_n squares, 2 possibilities each, base_n + 1 possibilities for goal
-                self.single_observation_space = gym.spaces.Discrete(n)
-            self._get_obs = lambda agent_yx, gr, goal: hobs_fn(agent_yx, gr, goal)
-        elif obs_type == 'room':
-            n = get_number_abstract_states(grid)
-            self.single_observation_space = gym.spaces.Discrete(n)
-            self._get_obs = lambda agent_yx, gr, goal: grid[tuple(agent_yx.T)]
-        else:  # Grid observations
-            self.single_observation_space = gym.spaces.Box(0, 2, (obs_n, obs_n), dtype=int)
-            gobs_fn = partial(get_grid_obs, n=obs_n)
-            self._get_obs = lambda agent_yx, gr, goal: gobs_fn(agent_yx, gr, goal)
+        self.single_observation_space, self._get_obs = get_observation_space_and_function(obs_type, self.grid, obs_n)
         self.valid_states = np.flatnonzero(grid >= 0)  # Places where we can put goal or agent
         self.rng, _ = seeding.np_random()
 
@@ -118,7 +146,7 @@ class Rooms(gym.Env):
         self.elapsed = np.zeros(self.num_envs, int)
         self.goal_yx = self._sample_goal(self.num_envs, self.rng)
         self.agent_yx = self._sample_agent(self.num_envs, self.rng)
-        obs = self._get_obs(self.agent_yx, self.grid, self.goal_yx)
+        obs = self._get_obs(self.agent_yx, self.goal_yx)
         return obs
 
     def _reset_some(self, mask: np.ndarray):
@@ -148,7 +176,7 @@ class Rooms(gym.Env):
         r[d] = self.goal_reward
         d |= self.elapsed > self.time_limit
         self._reset_some(d)
-        return self._get_obs(self.agent_yx, self.grid, self.goal_yx), r, d, {}
+        return self._get_obs(self.agent_yx, self.goal_yx), r, d, {}
 
     def _out_of_bounds(self, proposed_yx: np.ndarray):
         """Return whether given coordinates correspond to empty/goal square.

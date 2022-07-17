@@ -14,8 +14,9 @@ from .observations import *
 
 def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_m: int, cell_size: float = 1.) -> Tuple[gym.Space, Callable[[np.ndarray, np.ndarray],np.ndarray]]:
     """Return space and an observation function"""
-    is_cont = 'cont' in obs_type
+    is_vector = 'vector' in obs_type
     has_goal = 'goal' in obs_type
+    a_max = np.array(grid.shape) - 1 - 1e-6  # Max value of agent's observation
     if 'room' in obs_type:  # No continuous variant
         n = get_number_abstract_states(grid)
         if has_goal:  # Discrete state for agent AND goal combined
@@ -24,13 +25,13 @@ def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_m: i
         else:
             space = gym.spaces.Discrete(int(n))
             obs = lambda ayx, gyx: grid[tuple(coord_to_grid(ayx, cell_size).T)]
-    elif 'discrete' in obs_type:
-        if is_cont:  # Vector observation of position(s)
+    elif 'mdp' in obs_type:
+        if is_vector:  # Vector observation of position(s)
             if has_goal:
-                space = gym.spaces.Box(-1, 1, (4,))
+                space = gym.spaces.Box(1., np.tile(a_max, 2), (4,))
                 obs = lambda ayx, gyx: np.concatenate((ayx, gyx), -1)
             else:
-                space = gym.spaces.Box(-1, 1, (2,))
+                space = gym.spaces.Box(1., a_max, (2,))
                 obs = lambda ayx, gyx: ayx
         else:
             n, state_grid = get_number_discrete_states_and_conversion(grid)
@@ -42,7 +43,7 @@ def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_m: i
                 obs = lambda ayx, gyx: state_grid[tuple(coord_to_grid(ayx, cell_size).T)]
     elif 'hansen' in obs_type:  # No continuous. Cont converts to outputting a vector instead of scalar
         base_n = 8 if '8' in obs_type else 4
-        if is_cont:
+        if is_vector:
             if has_goal:
                 space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
                 obs = lambda ayx, gyx: get_hansen_vector_obs(coord_to_grid(ayx, cell_size), grid, coord_to_grid(gyx, cell_size), base_n)
@@ -82,7 +83,7 @@ class CRooms(gym.Env):
     """
     metadata = {"name": "CRooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500, use_velocity: bool = False, cell_size: float = 1.,
-                 obs_type: str = 'discrete', obs_m: int = 3, obs_bins: int = 8,
+                 obs_type: str = 'mdp', obs_m: int = 3, obs_bins: int = 8,
                  action_failure_probability: float = 0.2, action_type: str = 'yx', action_std: float = 0.2, action_power: float = 1.,
                  agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
                  step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1., goal_threshold: float = 0.5,
