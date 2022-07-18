@@ -135,8 +135,8 @@ class CRooms(gym.Env):
             self._sample_action = sample_action
         else:
             actions = ACTIONS_CARDINAL if action_type == 'cardinal' else ACTIONS_ORDINAL
-            action_matrix = create_action_probability_matrix(self.actions.shape[0], action_failure_probability)
-            self.single_action_space = gym.spaces.Discrete(self.actions.shape[0])
+            action_matrix = create_action_probability_matrix(actions.shape[0], action_failure_probability)
+            self.single_action_space = gym.spaces.Discrete(actions.shape[0])
             def sample_action(a: np.ndarray, rng: np.random.Generator) -> np.ndarray:
                 a = vectorized_multinomial_with_rng(action_matrix[a], rng)
                 a = actions[a]
