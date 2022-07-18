@@ -156,7 +156,7 @@ class Rooms(gym.Env):
             self.goal_yx[mask] = self._sample_goal(b, self.rng)
             self.agent_yx[mask] = self._sample_agent(b, self.rng)
 
-    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, dict]:
+    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
         """Step in environment
 
         Sample random action failure. Move agent(s) where move is valid.
@@ -176,7 +176,7 @@ class Rooms(gym.Env):
         r[d] = self.goal_reward
         d |= self.elapsed > self.time_limit
         self._reset_some(d)
-        return self._get_obs(self.agent_yx, self.goal_yx), r, d, {}
+        return self._get_obs(self.agent_yx, self.goal_yx), r, d, [{}] * self.num_envs
 
     def _out_of_bounds(self, proposed_yx: np.ndarray):
         """Return whether given coordinates correspond to empty/goal square.
