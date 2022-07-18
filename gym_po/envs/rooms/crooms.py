@@ -87,7 +87,7 @@ class CRooms(gym.Env):
                  action_failure_probability: float = 0.2, action_type: str = 'yx', action_std: float = 0.2, action_power: float = 1.,
                  agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
                  step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1., goal_threshold: float = 0.5,
-                 ):
+                 **kwargs):
         """
         Args:
             num_envs: Number of environments

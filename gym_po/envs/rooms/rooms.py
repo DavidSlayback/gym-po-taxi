@@ -72,7 +72,7 @@ class Rooms(gym.Env):
                  obs_type: str = 'mdp', obs_n: int = 3, action_failure_probability: float = 0.2, action_type: str = 'ordinal',
                  agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
                  step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
-                 ):
+                 **kwargs):
         """
         Args:
             num_envs: Number of environments
