@@ -140,7 +140,7 @@ class CRooms(gym.Env):
             def sample_action(a: np.ndarray, rng: np.random.Generator) -> np.ndarray:
                 a = vectorized_multinomial_with_rng(action_matrix[a], rng)
                 a = actions[a]
-                if action_std: a + rng.normal(scale=action_std, size=a.shape)
+                if action_std: return a + rng.normal(scale=action_std, size=a.shape)
                 else: return a
             self._sample_action = sample_action
         self.use_velocity = use_velocity
