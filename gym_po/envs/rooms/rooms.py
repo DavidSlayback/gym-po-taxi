@@ -91,7 +91,7 @@ class Rooms(gym.Env):
             goal_reward: Reward for reaching goal
         """
         assert layout in LAYOUTS
-        self.metadata['name'] += f'_{layout}_{action_type}_{obs_type}'
+        self.metadata['name'] += f'__{layout}__{action_type}__{obs_type}'
         grid = np_to_grid(layout_to_np(LAYOUTS[layout]))
         if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
