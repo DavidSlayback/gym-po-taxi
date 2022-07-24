@@ -47,7 +47,7 @@ def get_hansen_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, 
     where_is_goal = np.nonzero((goal_yx[:, None] == coords).all(-1))
     goal_mult = np.ones(goal_yx.shape[0])
     goal_mult[where_is_goal[0]] = where_is_goal[1] + 1
-    squares = grid[tuple(coords.transpose(2,0,1))]
+    squares = grid[tuple(coords.transpose(2, 0, 1))]
     squares += 1
     squares[squares > 0] = 1  # Empty squares
     # squares[is_goal] = 2  # Add goal
