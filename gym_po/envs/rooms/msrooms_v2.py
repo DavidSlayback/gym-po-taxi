@@ -1,9 +1,14 @@
-from typing import Tuple, Sequence, Union, Callable
+from typing import Tuple, Sequence, Union, Callable, Optional
 
 import numpy as np
 from dotsi import DotsiDict
-from .render_utils import COLORS
+import gym
+from gym.core import ObsType, ActType
+
+from .render_utils import *
 from gym.spaces import Discrete, Box, Space
+from gym.utils import seeding
+from gym.vector.utils import batch_space
 from .observations import get_number_discrete_states_and_conversion
 from .actions import *
 
@@ -23,10 +28,10 @@ BASE_FOURROOMS_MAP_WITH_STAIRS = '''xxxxxxxxxxxxx
                                     xxxxxxxxxxxxx'''
 WALL_CHAR = 'x'
 # Fixed locations
-END = (7, 9)  # East hallway
-START = NW = (1, 1)  # NW Corner
-SW = (11, 1)
-NE = (1, 11)
+END_XYZ = (9, 7, -1)  # East hallway
+START_XYZ = (1, 1, 0)  # NW Corner
+SW = (11, 1); SW_NP = np.array(SW)  # Downstairs
+NE = (1, 11); NE_NP = np.array(NE)  # Upstairs
 
 # Constant integers for each object
 GR_CNST = DotsiDict({
@@ -35,6 +40,7 @@ GR_CNST = DotsiDict({
     'stair_up': 2,
     'stair_down': 3
 })
+MAX_GR_CNST = len(GR_CNST) - 1
 
 
 # Constant colors, can be indexed by values above
@@ -70,6 +76,7 @@ def get_grid_obs(agent_zyx: np.ndarray, grid: np.ndarray, goal_zyx: np.ndarray, 
     squares[is_goal] = 2
     return squares
 
+
 def layout_to_np(layout: str) -> np.ndarray:
     """Convert layout string to numpy char array"""
     return np.asarray([t.strip() for t in layout.splitlines()], dtype='c').astype('U')
@@ -79,7 +86,7 @@ def np_to_grid(np_layout: np.ndarray) -> Tuple[np.ndarray, int]:
     """Convert numpy char array to state-abstracted integer grid, also return number of states"""
     state_aliases = np.unique(np_layout)
     state_aliases_without_wall = np.delete(state_aliases, np.nonzero(state_aliases == WALL_CHAR))
-    first_val = max(GR_CNST.values())
+    first_val = MAX_GR_CNST + 1
     state_alias_values = np.arange(first_val, len(state_aliases_without_wall)+first_val)
     grid = np.full_like(np_layout, 0, dtype=int)  # Walls are 0
     for i, a in zip(state_alias_values, state_aliases_without_wall):
@@ -109,27 +116,54 @@ def generate_layout_and_img(map: str = BASE_FOURROOMS_MAP_WITH_STAIRS, grid_z: i
     return cnst_layout, img_map
 
 
-def get_hansen_vector_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: Optional[np.ndarray] = None, hansen_n: int = 8) -> np.ndarray:
+def get_hansen_vector_obs(agent_zyx: np.ndarray, grid: np.ndarray, goal_zyx: Optional[np.ndarray] = None, hansen_n: int = 8) -> np.ndarray:
     """Same as above, but a vector representation (like the grid obs, but flattened)
 
     Args:
-        agent_yx: (z, y,x) coordinate of agent(s) [B,3]
+        agent_zyx: (z, y,x) coordinate of agent(s) [B,3]
         grid: (z, y,x) numpy grid
-        goal_yx (z, y,x) goal location(s) [B, 3]
-        n: 8 or 4
+        goal_zyx (z, y,x) goal location(s) [B, 3]
+        hansen_n: 8 or 4
     Returns:
         Obs (Constants)
     """
-    a = ACTIONS_CARDINAL if hansen_n == 4 else ACTIONS_ORDINAL
+    a = ACTIONS_CARDINAL_Z if hansen_n == 4 else ACTIONS_ORDINAL_Z  # Observation only on agent floor
     a = a[None, :]
-    coords = agent_yx[:, None] + a
-    squares = grid[tuple(coords.transpose(2,0,1))]
-    squares += 1
-    squares[squares > 0] = 1  # Empty squares
-    if goal_yx is not None:
-        is_goal = (goal_yx[:, None] == coords).all(-1)
-        squares[is_goal] = 2  # Add goal
+    coords = agent_zyx[:, None] + a
+    squares = grid[tuple(coords.transpose(2, 0, 1))]
+    # So each square can be wall, empty, stair, goal
+    squares[(squares > 0) & (squares <= MAX_GR_CNST)] = 2  # Alias stairs (2)
+    squares[squares > MAX_GR_CNST] = 1  # Rooms all become same "empty" squares (1)
+    if goal_zyx is not None:
+        is_goal = (goal_zyx[:, None] == coords).all(-1)
+        squares[is_goal] = 3  # Add goal
     return squares
+
+
+def get_hansen_obs(agent_zyx: np.ndarray, ms_grid: np.ndarray, goal_zyx: np.ndarray, hansen_n: int = 8) -> int:
+    """Get hansen observation of agent(s) (empty, wall), goal in (null, N, E, S, W) based on grid
+
+    Args:
+        agent_zyx: (y, x) coordinate of agent(s) [B, 2]
+        ms_grid: (y, x) numpy grid
+        goal_zyx: (y, x) goal location(s)
+        hansen_n: 8 or 4
+    Returns:
+        obs
+    """
+    a = ACTIONS_CARDINAL_Z if hansen_n == 4 else ACTIONS_ORDINAL_Z
+    a = a[None, :]
+    coords = agent_zyx[:, None] + a
+    # is_goal = (goal_yx[:, None] == coords).all(-1)
+    where_is_goal = np.nonzero((goal_zyx[:, None] == coords).all(-1))
+    goal_mult = np.ones(goal_zyx.shape[0])
+    goal_mult[where_is_goal[0]] = where_is_goal[1] + 1
+    squares = ms_grid[tuple(coords.transpose(2, 0, 1))]
+    # So each square can be wall, empty, stair. Goal added separately
+    squares[(squares > 0) & (squares <= MAX_GR_CNST)] = 2  # Alias stairs (2)
+    squares[squares > MAX_GR_CNST] = 1  # Rooms all become same "empty" squares (1)
+    multipliers = np.array([3 ** i for i in range(a.shape[1])])  # There's only one goal, let's multiply it separately after
+    return squares.dot(multipliers) * goal_mult
 
 
 def get_observation_space_and_function(obs_type: str, ms_grid: np.ndarray, obs_n: int = 3) -> Tuple[Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
@@ -137,7 +171,7 @@ def get_observation_space_and_function(obs_type: str, ms_grid: np.ndarray, obs_n
     is_vector = 'vector' in obs_type  # Return a vector or a scalar? In practice, scalar can get huge
     has_goal = 'goal' in obs_type  # Should goal information be included?
     a_max = np.array(ms_grid.shape) - 2; a_max[0] += 1  # Max agent coordinate in 3-D
-    a_min = np.array([0,1,1])  # Min agent coordinate in 3-D
+    a_min = np.array([0, 1, 1])  # Min agent coordinate in 3-D
     if 'room' in obs_type:
         assert not is_vector
         offset = len(GR_CNST)
@@ -151,7 +185,7 @@ def get_observation_space_and_function(obs_type: str, ms_grid: np.ndarray, obs_n
     elif 'mdp' in obs_type:  # Fully observable (if goal is fixed or provided)
         if is_vector:  # Vector obs of position
             if has_goal:
-                space = Box(a_min, np.tile(a_max, 2), (6,), dtype=int)
+                space = Box(np.tile(a_min, 2), np.tile(a_max, 2), (6,), dtype=int)
                 obs = lambda azyx, gzyx: np.concatenate((azyx, gzyx), -1)
             else:
                 space = Box(a_min, a_max, (3,), dtype=int)
@@ -168,35 +202,188 @@ def get_observation_space_and_function(obs_type: str, ms_grid: np.ndarray, obs_n
         base_n = 8 if '8' in obs_type else 4
         if is_vector:
             if has_goal:
-                space = Box(0, 2, (base_n,), dtype=int)
-                obs = lambda azyx, gzyx: get_hansen_vector_obs(ayx, grid, gyx, base_n)
+                space = Box(0, 3, (base_n,), dtype=int)
+                obs = lambda azyx, gzyx: get_hansen_vector_obs(azyx, ms_grid, gzyx, base_n)
             else:
-                space = Box(0, 1, (base_n,), dtype=int)
-                obs = lambda azyx, gzyx: get_hansen_vector_obs(ayx, grid, None, base_n)
-        else:  # No goal
-            space = Discrete(int(2 ** base_n * (base_n + 1)))
-            obs = lambda ayx, gyx: get_hansen_obs(ayx, grid, gyx, base_n)
+                space = Box(0, 2, (base_n,), dtype=int)
+                obs = lambda azyx, gzyx: get_hansen_vector_obs(azyx, ms_grid, None, base_n)
+        else:  # Goal
+            space = Discrete(int(3 ** base_n * (base_n + 1)))
+            obs = lambda azyx, gzyx: get_hansen_obs(azyx, ms_grid, gzyx, base_n)
     elif 'grid' in obs_type: raise NotImplementedError
     else: raise NotImplementedError('Observation type not recognized')
     return space, obs
 
+class MultistoryFourRoomsEnvV2(gym.Env):
+    """Vectorized Multistory FourRooms environment, using tricks from ROOMS/CROOMS"""
+    metadata = {"name": "MultistoryFourRoomsV2", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
 
-def compute_obs_space(cnst_layout: np.ndarray, obs_n: int = 0) -> Union[Box, Discrete]:
-    """Compute observation space
+    def __init__(self, num_envs: int, grid_z: int = 1, floor_map: str = BASE_FOURROOMS_MAP_WITH_STAIRS, time_limit: int = 500,
+                 obs_type: str = 'mdp', obs_n: int = 3, action_failure_probability: float = (1./ 3), action_type: str = 'cardinal',
+                 agent_xyz: Optional[Sequence[int]] = None, goal_xyz: Optional[Sequence[int]] = (0, 0, 0),
+                 step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
+                 **kwargs):
+        """
 
-    Discrete observation space has one state for each possible position of agent. Should I include goal?
-    Hansen observation space has 4 (N, S, E, W) ** 4 (empty, wall, stair, goal) possible states. Probably actually fewer possible states, but eh
-    Grid observation space is a (obs_n, obs_n) uint8 box space with aliased stairs
+        :param num_envs: Number of environments in parallel
+        :param grid_z: Number of floors
+        :param floor_map: Floor map string to use as base
+        :param time_limit: Max time before episode terminates
+        :param obs_type: Type of observation. One of 'discrete', 'hansen', 'hansen8', 'vector_hansen', 'vector_hansen8', 'room', 'grid'
+                hansen is 4 adjacent <empty|wall|goal>, hansen8 is 8. room treats each room as an obs
+        :param obs_n: If 'grid' observation, use NxN grid centered on agent
+        :param action_failure_probability: Likelihood that taking one action fails and chooses another
+        :param action_type: 'ordinal' (8D compass) or 'cardinal' (4D compass)
+        :param agent_xyz: Optionally, provide fixed agent location. If None, random. If 2D, bottom floor. If invalid, use default fixed start
+        :param goal_xyz: Optionally, provide fixed goal location. As above
+        :param step_reward: Reward for each step
+        :param wall_reward: Reward for hitting a wall
+        :param goal_reward: Reward for reaching goal
+        :param kwargs:  Throw these away
+        """
+        self.grid, self.img = generate_layout_and_img(floor_map, grid_z)
+        self.metadata['name'] += f'{grid_z}__{action_type}__{obs_type}'
+        self.gridshape = np.array(self.grid.shape)
+        self.single_observation_space, self._get_obs = get_observation_space_and_function(obs_type, self.grid, obs_n)
+        self.valid_states = np.flatnonzero(self.grid > 0)
+        self.valid_agent_states = np.flatnonzero(self.grid[0] > 0)
+        self.valid_goal_states = np.flatnonzero(self.grid[-1] > MAX_GR_CNST)
+        self.rng, _ = seeding.np_random()
 
-    Args:
-        cnst_layout: Full map (z, y, x)
-        obs_n: 0 is discrete, 1 is hansen, 3+ is surround box, even numbers are invalid
-    Returns:
-        space: gym observation space
-    """
-    if not obs_n:
-        return Discrete((cnst_layout != GR_CNST.wall).sum())
-    elif obs_n == 1:
-        return Discrete(4**4)
-    assert (obs_n % 2) == 1
-    return Box(0, 4, shape=(obs_n, obs_n), dtype=int)
+        self.actions = ACTIONS_CARDINAL_Z if action_type == 'cardinal' else ACTIONS_ORDINAL_Z
+        # Boilerplate for vector environment
+        self.num_envs = num_envs
+        self.is_vector_env = True
+        self.single_action_space = gym.spaces.Discrete(self.actions.shape[0])
+        self.action_space = batch_space(self.single_action_space, num_envs)
+        self.observation_space = batch_space(self.single_observation_space, num_envs)
+
+        # Constants
+        self.time_limit = time_limit
+        self.step_reward = step_reward
+        self.goal_reward = goal_reward
+        self.wall_reward = wall_reward
+
+        # Random or fixed goal/agent
+        if goal_xyz is not None:
+            goal_zyx = tuple(reversed(goal_xyz))  # (x,y) to (y,x)
+            if self.grid[goal_zyx] <= MAX_GR_CNST: goal_zyx = tuple(reversed(END_XYZ))  # Goal can't be on stairs
+            goal_zyx = np.array(goal_zyx)
+            if goal_zyx[0] == -1: goal_zyx[0] = self.gridshape[0] - 1
+            self._sample_goal = lambda b, rng: np.full((b, 3), goal_zyx, dtype=int)
+        else: self._sample_goal = lambda b, rng: np.array(np.unravel_index(rng.choice(self.valid_goal_states, b), self.grid.shape)).swapaxes(0,1)
+        if agent_xyz is not None:
+            agent_zyx = tuple(reversed(agent_xyz))
+            agent_zyx = np.array(agent_zyx)
+            if self.grid[agent_zyx] == GR_CNST.wall: agent_zyx = tuple(reversed(START_XYZ))
+            self._sample_agent = lambda b, rng: np.full((b, 3), agent_zyx, dtype=int)
+        else: self._sample_agent = lambda b, rng: np.array(np.unravel_index(rng.choice(self.valid_agent_states, b), self.grid.shape)).swapaxes(0,1)
+        self.action_matrix = create_action_probability_matrix(self.actions.shape[0], action_failure_probability)
+
+    def seed(self, seed: Optional[int] = None):
+        """Set internal seed (returns sampled seed if none provided)"""
+        self.rng, seed = seeding.np_random(seed)
+        return seed
+
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        return_info: bool = False,
+        options: Optional[dict] = None,
+    ) -> Union[ObsType, tuple[ObsType, dict]]:
+        """Reset all environments, set seed if given"""
+        if seed is not None: self.seed(seed)
+        self.elapsed = np.zeros(self.num_envs, int)
+        self.goal_zyx = self._sample_goal(self.num_envs, self.rng)
+        self.agent_zyx = self._sample_agent(self.num_envs, self.rng)
+        obs = self._get_obs(self.agent_zyx, self.goal_zyx)
+        return obs
+
+    def _reset_some(self, mask: np.ndarray):
+        """Reset only a subset of environments"""
+        if b := mask.sum():
+            self.elapsed[mask] = 0
+            self.goal_zyx[mask] = self._sample_goal(b, self.rng)
+            self.agent_zyx[mask] = self._sample_agent(b, self.rng)
+
+    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
+        """Step in environment
+
+        Sample random action failure. Move agent(s) where move is valid.
+        Check if we reached goal. Update with step, wall, and goal rewards.
+        """
+        self.elapsed += 1
+        # Movement
+        a = vectorized_multinomial_with_rng(self.action_matrix[action], self.rng)
+        proposed_zyx = self.agent_zyx + self.actions[a]
+        oob = self._out_of_bounds(proposed_zyx)
+        self.agent_zyx[~oob] = proposed_zyx[~oob]
+        self._transit_stairs(~oob)
+        # Reward
+        r = np.zeros(self.num_envs, dtype=np.float32)
+        d = (self.agent_zyx == self.goal_zyx).all(-1)
+        r += self.step_reward
+        r[oob] = self.wall_reward
+        r[d] = self.goal_reward
+        d |= self.elapsed > self.time_limit
+        self._reset_some(d)
+        return self._get_obs(self.agent_zyx, self.goal_zyx), r, d, [{}] * self.num_envs
+
+    def _out_of_bounds(self, proposed_zyx: np.ndarray) -> np.ndarray:
+        """Return whether given coordinates correspond to empty/goal square.
+
+        Rooms are surrounded by walls, so only need to check this"""
+        # oob = (proposed_yx >= self.gridshape[None, :]).any(-1) | (proposed_yx < 0).any(-1)
+        # oob[~oob] = self.grid[tuple(proposed_yx[~oob].T)] == -1
+        # return oob
+        return self.grid[tuple(proposed_zyx.T)] == GR_CNST.wall
+
+
+    def _transit_stairs(self, moved: np.ndarray):
+        """If we MOVED (not oob) and we're on stairs, transit them"""
+        go_up = (self.grid[tuple(self.agent_zyx.T)] == GR_CNST.stair_up) & moved
+        go_down = (self.grid[tuple(self.agent_zyx.T)] == GR_CNST.stair_down) & moved
+        if go_up.any():
+            self.agent_zyx[go_up, 0] += 1
+            self.agent_zyx[go_up, 1:] = SW_NP
+        if go_down.any():
+            self.agent_zyx[go_down, 0] -= 1
+            self.agent_zyx[go_down, 1:] = NE_NP
+
+
+    # def render(self, mode="human", idx: Optional[Sequence[int]] = None):
+    #     """Render environment as an rgb array, with highlighting of agent's view. If "human", render with pygame"""
+    #     if idx is None: idx = np.arange(1)
+    #     idx = np.array(idx)
+    #     # zs = np.zeros_like(idx)
+    #     a, g = self.agent[idx], self.goal[idx]
+    #     ag, gg = self._to_grid(a), self._to_grid(g)  # Grid coordinates
+    #     img = self.img[ag[0]].copy()  # Get agent's floor
+    #     img[(idx,) + tuple(ag)[1:]] = GR_CNST_COLORS.agent  # Add agent (always same floor)
+    #     goal_on_agent_floor = (gg[0] == ag[0])
+    #     img[(idx[goal_on_agent_floor],) + tuple(gg[:, goal_on_agent_floor])[1:]] = GR_CNST_COLORS.goal  # Add goal if on same floor
+    #     v = np.concatenate((idx[None, :], ag[1:]), axis=0)
+    #     if self.obs_n == 1: # Hansen, render floor, highlight hansen grid
+    #         v = (ag[1:, None] + self.ACTIONS[1:][...,None]).reshape(2, -1)
+    #         idx = np.tile(idx, (1,4))
+    #         v = np.concatenate((idx, v), axis=0)
+    #     elif self.obs_n > 1:
+    #         v = self._to_grid(self._last_grid_obs_coords[idx]) # Use cached coordinates
+    #         v[0, idx] = idx[:,None,None]
+    #     img[tuple(v)] += 40  # lighten
+    #     img = tile_images(img)  # Tile
+    #     img = resize(img, CELL_PX)
+    #     if mode in ('rgb_array', 'rgb'): return img
+    #     else:
+    #         import pygame
+    #         if self._viewer is None:
+    #             pygame.init()
+    #             self._viewer = pygame.display.set_mode(img.shape[:-1])
+    #         sfc = pygame.surfarray.make_surface(img.swapaxes(0, 1))
+    #         self._viewer.blit(sfc, (0, 0))
+    #         pygame.display.update()
+    #         return img
+
+
+

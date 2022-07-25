@@ -1,4 +1,4 @@
-__all__ = ['COLORS', 'CELL_PX', 'WALL_PX']
+__all__ = ['COLORS', 'CELL_PX', 'WALL_PX', 'tile_images', 'draw_text_at', 'resize']
 
 from typing import Sequence, Tuple
 

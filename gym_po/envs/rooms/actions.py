@@ -1,4 +1,4 @@
-__all__ = ['create_action_probability_matrix', 'add_gaussian_noise', 'randomize_action_sign', 'ACTIONS_ORDINAL', 'ACTIONS_CARDINAL', 'vectorized_multinomial_with_rng']
+__all__ = ['create_action_probability_matrix', 'add_gaussian_noise', 'randomize_action_sign', 'ACTION_NAMES_CARDINAL', 'ACTION_NAMES_ORDINAL', 'ACTIONS_ORDINAL', 'ACTIONS_CARDINAL', 'ACTIONS_CARDINAL_Z', 'ACTIONS_ORDINAL_Z', 'vectorized_multinomial_with_rng']
 import numpy as np
 
 # N, NE, E, SE, S, SW, W, NW
@@ -8,6 +8,10 @@ ACTIONS_ORDINAL = np.array([
 ])
 
 ACTIONS_CARDINAL = ACTIONS_ORDINAL[::2]
+ACTIONS_ORDINAL_Z = np.concatenate((np.zeros((8,1), dtype=int), ACTIONS_ORDINAL), -1)  # Add z-dimension
+ACTIONS_CARDINAL_Z = ACTIONS_ORDINAL_Z[::2]
+ACTION_NAMES_ORDINAL = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+ACTION_NAMES_CARDINAL = ACTION_NAMES_ORDINAL[::2]
 
 
 def create_action_probability_matrix(action_n: int = 8, action_failure_probability: float = 0.2):

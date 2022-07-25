@@ -6,7 +6,7 @@ from envs import *
 from gym.wrappers.record_video import RecordVideo
 from envs.rooms.rooms import Rooms
 from envs.rooms.crooms import CRooms
-from envs.rooms.msrooms_v2 import generate_layout_and_img
+from envs.rooms.msrooms_v2 import generate_layout_and_img, MultistoryFourRoomsEnvV2
 # from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
 # from envs.ant_tag import AntTagEnv
 import torch
@@ -15,10 +15,10 @@ from brax import envs
 from brax.envs import to_torch
 
 if __name__ == "__main__":
-    t, t2 = generate_layout_and_img(grid_z=3)
+    e = MultistoryFourRoomsEnvV2(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
     # env = envs.create_gym_env('walker2d', 20)
     # env = to_torch.JaxToTorchWrapper(env, device='cuda')
-    e = Rooms(16, '8b', obs_type='mdp', action_type='yx')
+    # e = Rooms(16, '8b', obs_type='mdp', action_type='yx')
     o = e.reset()
     # e = AntTagEnv()
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
