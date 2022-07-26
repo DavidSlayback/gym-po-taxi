@@ -245,9 +245,10 @@ class MultistoryFourRoomsEnvV2(gym.Env):
         self.metadata['name'] += f'{grid_z}__{action_type}__{obs_type}'
         self.gridshape = np.array(self.grid.shape)
         self.single_observation_space, self._get_obs = get_observation_space_and_function(obs_type, self.grid, obs_n)
+        spawn_vs = np.array(np.nonzero(self.grid > MAX_GR_CNST))  # [3, N]
         self.valid_states = np.flatnonzero(self.grid > 0)
-        self.valid_agent_states = np.flatnonzero(self.grid[0] > 0)
-        self.valid_goal_states = np.flatnonzero(self.grid[-1] > MAX_GR_CNST)
+        self.valid_agent_states = np.ravel_multi_index(spawn_vs[:, spawn_vs[0] == 0], self.grid.shape)
+        self.valid_goal_states = np.ravel_multi_index(spawn_vs[:, spawn_vs[0] == self.gridshape[0] - 1], self.grid.shape)
         self.rng, _ = seeding.np_random()
 
         self.actions = ACTIONS_CARDINAL_Z if action_type == 'cardinal' else ACTIONS_ORDINAL_Z
