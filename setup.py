@@ -36,7 +36,7 @@ setup(
         "Operating System :: MacOS :: MacOS X",
     ],
     packages=[pkg for pkg in find_packages() if pkg.startswith('gym_po')],
-    install_requires=["gym>=0.21.0", "numpy<1.22,>=1.21", "numba>=0.55.1", "pygame", "dotsi"],
+    install_requires=["gym>=0.21.0", "numpy<1.23,>=1.21", "numba>=0.55.1", "pygame", "dotsi"],
     python_requires=">=3.8",
     package_data={
         'gym_po':
