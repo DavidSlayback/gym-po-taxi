@@ -1,10 +1,10 @@
 from functools import partial
 from typing import Tuple, Optional, Union, Sequence, Callable
 import numpy as np
-import gym
-from gym.core import ActType, ObsType
-from gym.utils import seeding
-from gym.vector.utils import batch_space
+import gymnasium
+from gymnasium.core import ActType, ObsType
+from gymnasium.utils import seeding
+from gymnasium.vector.utils import batch_space
 
 from .layouts import *
 from .utils import *
@@ -12,82 +12,137 @@ from .actions import *
 from .observations import *
 
 
-def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_m: int, cell_size: float = 1.) -> Tuple[gym.Space, Callable[[np.ndarray, np.ndarray],np.ndarray]]:
+def get_observation_space_and_function(
+    obs_type: str, grid: np.ndarray, obs_m: int, cell_size: float = 1.0
+) -> Tuple[gymnasium.Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
     """Return space and an observation function"""
-    is_vector = 'vector' in obs_type
-    has_goal = 'goal' in obs_type
+    is_vector = "vector" in obs_type
+    has_goal = "goal" in obs_type
     a_max = np.array(grid.shape) - 1 - 1e-6  # Max value of agent's observation
-    if 'room' in obs_type:  # No continuous variant
+    if "room" in obs_type:  # No continuous variant
         n = get_number_abstract_states(grid)
         if has_goal:  # Discrete state for agent AND goal combined
-            space = gym.spaces.Discrete(int(n ** 2))
-            obs = lambda ayx, gyx: grid[tuple(coord_to_grid(ayx, cell_size).T)] + n * grid[tuple(coord_to_grid(gyx, cell_size).T)]
+            space = gymnasium.spaces.Discrete(int(n**2))
+            obs = (
+                lambda ayx, gyx: grid[tuple(coord_to_grid(ayx, cell_size).T)]
+                + n * grid[tuple(coord_to_grid(gyx, cell_size).T)]
+            )
         else:
-            space = gym.spaces.Discrete(int(n))
+            space = gymnasium.spaces.Discrete(int(n))
             obs = lambda ayx, gyx: grid[tuple(coord_to_grid(ayx, cell_size).T)]
-    elif 'mdp' in obs_type:
+    elif "mdp" in obs_type:
         if is_vector:  # Vector observation of position(s)
             if has_goal:
-                space = gym.spaces.Box(1., np.tile(a_max, 2), (4,))
+                space = gymnasium.spaces.Box(1.0, np.tile(a_max, 2), (4,))
                 obs = lambda ayx, gyx: np.concatenate((ayx, gyx), -1)
             else:
-                space = gym.spaces.Box(1., a_max, (2,))
+                space = gymnasium.spaces.Box(1.0, a_max, (2,))
                 obs = lambda ayx, gyx: ayx
         else:
             n, state_grid = get_number_discrete_states_and_conversion(grid)
             if has_goal:
-                space = gym.spaces.Discrete(int(n ** 2))
-                obs = lambda ayx, gyx: state_grid[tuple(coord_to_grid(ayx, cell_size).T)] + n * state_grid[tuple(coord_to_grid(gyx, cell_size).T)]
+                space = gymnasium.spaces.Discrete(int(n**2))
+                obs = (
+                    lambda ayx, gyx: state_grid[tuple(coord_to_grid(ayx, cell_size).T)]
+                    + n * state_grid[tuple(coord_to_grid(gyx, cell_size).T)]
+                )
             else:
-                space = gym.spaces.Discrete(int(n))
-                obs = lambda ayx, gyx: state_grid[tuple(coord_to_grid(ayx, cell_size).T)]
-    elif 'hansen' in obs_type:  # No continuous. Cont converts to outputting a vector instead of scalar
-        base_n = 8 if '8' in obs_type else 4
+                space = gymnasium.spaces.Discrete(int(n))
+                obs = lambda ayx, gyx: state_grid[
+                    tuple(coord_to_grid(ayx, cell_size).T)
+                ]
+    elif (
+        "hansen" in obs_type
+    ):  # No continuous. Cont converts to outputting a vector instead of scalar
+        base_n = 8 if "8" in obs_type else 4
         if is_vector:
             if has_goal:
-                space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
-                obs = lambda ayx, gyx: get_hansen_vector_obs(coord_to_grid(ayx, cell_size), grid, coord_to_grid(gyx, cell_size), base_n)
+                space = gymnasium.spaces.Box(0, 2, (base_n,), dtype=int)
+                obs = lambda ayx, gyx: get_hansen_vector_obs(
+                    coord_to_grid(ayx, cell_size),
+                    grid,
+                    coord_to_grid(gyx, cell_size),
+                    base_n,
+                )
             else:
-                space = gym.spaces.Box(0, 1, (base_n,), dtype=int)
-                obs = lambda ayx, gyx: get_hansen_vector_obs(coord_to_grid(ayx, cell_size), grid, None, base_n)
-        else: # No goal
-            space = gym.spaces.Discrete(int(2 ** base_n * (base_n + 1)))
-            obs = lambda ayx, gyx: get_hansen_obs(coord_to_grid(ayx, cell_size), grid, coord_to_grid(gyx, cell_size), base_n)
-    elif 'grid' in obs_type: # No continuous, no has goal
-        space = gym.spaces.Box(0, 2, (obs_m, obs_m), dtype=int)
-        obs = lambda ayx, gyx: get_grid_obs(coord_to_grid(ayx, cell_size), grid, coord_to_grid(gyx, cell_size), obs_m)
+                space = gymnasium.spaces.Box(0, 1, (base_n,), dtype=int)
+                obs = lambda ayx, gyx: get_hansen_vector_obs(
+                    coord_to_grid(ayx, cell_size), grid, None, base_n
+                )
+        else:  # No goal
+            space = gymnasium.spaces.Discrete(int(2**base_n * (base_n + 1)))
+            obs = lambda ayx, gyx: get_hansen_obs(
+                coord_to_grid(ayx, cell_size),
+                grid,
+                coord_to_grid(gyx, cell_size),
+                base_n,
+            )
+    elif "grid" in obs_type:  # No continuous, no has goal
+        space = gymnasium.spaces.Box(0, 2, (obs_m, obs_m), dtype=int)
+        obs = lambda ayx, gyx: get_grid_obs(
+            coord_to_grid(ayx, cell_size), grid, coord_to_grid(gyx, cell_size), obs_m
+        )
     else:
-        raise NotImplementedError('Observation type not recognized')
+        raise NotImplementedError("Observation type not recognized")
     return space, obs
 
 
-def get_lidar_obs(agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, n_bins: int = 8, obs_m: float = 3., cell_size: float = 1.) -> np.ndarray:
+def get_lidar_obs(
+    agent_yx: np.ndarray,
+    grid: np.ndarray,
+    goal_yx: np.ndarray,
+    n_bins: int = 8,
+    obs_m: float = 3.0,
+    cell_size: float = 1.0,
+) -> np.ndarray:
     """Get rangefinder observation from agent"""
     angles = np.arange(0, n_bins, 360 / n_bins)
     # Fill in goal
     relative_yx = goal_yx - agent_yx
-    goal_in_range = ((goal_yx - agent_yx) ** 2).sum(-1) <= obs_m  # Goal is within observation range
+    goal_in_range = ((goal_yx - agent_yx) ** 2).sum(
+        -1
+    ) <= obs_m  # Goal is within observation range
     obs = np.zeros((agent_yx.shape[0], n_bins + 2))
     obs[goal_in_range] = relative_yx
     # TODO: Fill in distance to nearest wall in each direction
     return obs
 
 
-
-
-class CRooms(gym.Env):
+class CRooms(gymnasium.Env):
     """Basic CROOMS domain adapted from "Markovian State and Action Abstraction"
-    
+
     See https://github.com/aijunbai/hplanning for official repo
     This is a vectorized version of the C-ROOMs domain.
     """
-    metadata = {"name": "CRooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
-    def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500, use_velocity: bool = False, cell_size: float = 1.,
-                 obs_type: str = 'mdp', obs_m: int = 3, obs_bins: int = 8,
-                 action_failure_probability: float = 0.2, action_type: str = 'yx', action_std: float = 0.2, action_power: float = 1.,
-                 agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
-                 step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1., goal_threshold: float = 0.5,
-                 **kwargs):
+
+    metadata = {
+        "name": "CRooms",
+        "render.modes": ["human", "rgb_array"],
+        "video.frames_per_second": 10,
+    }
+
+    def __init__(
+        self,
+        num_envs: int,
+        layout: str = "4",
+        time_limit: int = 500,
+        use_velocity: bool = False,
+        cell_size: float = 1.0,
+        obs_type: str = "mdp",
+        obs_m: int = 3,
+        obs_bins: int = 8,
+        action_failure_probability: float = 0.2,
+        action_type: str = "yx",
+        action_std: float = 0.2,
+        action_power: float = 1.0,
+        agent_xy: Optional[Sequence[int]] = None,
+        goal_xy: Optional[Sequence[int]] = (0, 0),
+        step_reward: float = 0.0,
+        wall_reward: float = 0.0,
+        goal_reward: float = 1.0,
+        goal_threshold: float = 0.5,
+        **kwargs,
+    ):
         """
         Args:
             num_envs: Number of environments
@@ -117,31 +172,45 @@ class CRooms(gym.Env):
             goal_threshold: Threshold for being in range of goal
         """
         assert layout in LAYOUTS
-        self.metadata['name'] += f'__{layout}__{action_type}__{obs_type}'
+        self.metadata["name"] += f"__{layout}__{action_type}__{obs_type}"
         grid = np_to_grid(layout_to_np(LAYOUTS[layout]))
-        if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
+        if "b" in layout:
+            layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
         self.gridshape = np.array(grid.shape)
-        self.single_observation_space, self._get_obs = get_observation_space_and_function(obs_type, self.grid, obs_m, cell_size)
-        self.valid_states = np.flatnonzero(grid >= 0)  # Places where we can put goal or agent
+        (
+            self.single_observation_space,
+            self._get_obs,
+        ) = get_observation_space_and_function(obs_type, self.grid, obs_m, cell_size)
+        self.valid_states = np.flatnonzero(
+            grid >= 0
+        )  # Places where we can put goal or agent
         self.rng, _ = seeding.np_random()
-        self.max_velocity = 5.
+        self.max_velocity = 5.0
 
         # Different action spaces and random modifiers
-        if action_type == 'yx':
-            self.single_action_space = gym.spaces.Box(-1., 1., (2,))
+        if action_type == "yx":
+            self.single_action_space = gymnasium.spaces.Box(-1.0, 1.0, (2,))
+
             def sample_action(a: np.ndarray, rng: np.random.Generator) -> np.ndarray:
                 return a + rng.normal(scale=action_std, size=a.shape)
+
             self._sample_action = sample_action
         else:
-            actions = ACTIONS_CARDINAL if action_type == 'cardinal' else ACTIONS_ORDINAL
-            action_matrix = create_action_probability_matrix(actions.shape[0], action_failure_probability)
-            self.single_action_space = gym.spaces.Discrete(actions.shape[0])
+            actions = ACTIONS_CARDINAL if action_type == "cardinal" else ACTIONS_ORDINAL
+            action_matrix = create_action_probability_matrix(
+                actions.shape[0], action_failure_probability
+            )
+            self.single_action_space = gymnasium.spaces.Discrete(actions.shape[0])
+
             def sample_action(a: np.ndarray, rng: np.random.Generator) -> np.ndarray:
                 a = vectorized_multinomial_with_rng(action_matrix[a], rng)
                 a = actions[a]
-                if action_std: return a + rng.normal(scale=action_std, size=a.shape)
-                else: return a
+                if action_std:
+                    return a + rng.normal(scale=action_std, size=a.shape)
+                else:
+                    return a
+
             self._sample_action = sample_action
         self.use_velocity = use_velocity
         # Boilerplate for vector environment
@@ -162,16 +231,32 @@ class CRooms(gym.Env):
         # Random or fixed goal/agent
         if goal_xy is not None:
             goal_yx = tuple(reversed(goal_xy))  # (x,y) to (y,x)
-            if grid[goal_yx] < 0: goal_yx = tuple(reversed(ENDS[layout]))
+            if grid[goal_yx] < 0:
+                goal_yx = tuple(reversed(ENDS[layout]))
             goal_yx = np.array(goal_yx)
-            self._sample_goal = lambda b, rng: grid_to_coord(np.full((b, 2), goal_yx, dtype=int))
-        else: self._sample_goal = lambda b, rng: grid_to_coord(np.array(np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)).swapaxes(0,1))
+            self._sample_goal = lambda b, rng: grid_to_coord(
+                np.full((b, 2), goal_yx, dtype=int)
+            )
+        else:
+            self._sample_goal = lambda b, rng: grid_to_coord(
+                np.array(
+                    np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)
+                ).swapaxes(0, 1)
+            )
         if agent_xy is not None:
             agent_yx = tuple(reversed(agent_xy))
             agent_yx = np.array(agent_yx)
-            if grid[agent_yx] < 0: agent_yx = tuple(reversed(STARTS[layout]))
-            self._sample_agent = lambda b, rng: grid_to_coord(np.full((b, 2), agent_yx, dtype=int), cell_size)
-        else: self._sample_agent = lambda b, rng: grid_to_coord(np.array(np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)).swapaxes(0,1))
+            if grid[agent_yx] < 0:
+                agent_yx = tuple(reversed(STARTS[layout]))
+            self._sample_agent = lambda b, rng: grid_to_coord(
+                np.full((b, 2), agent_yx, dtype=int), cell_size
+            )
+        else:
+            self._sample_agent = lambda b, rng: grid_to_coord(
+                np.array(
+                    np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)
+                ).swapaxes(0, 1)
+            )
 
     def seed(self, seed: Optional[int] = None):
         """Set internal seed (returns sampled seed if none provided)"""
@@ -186,7 +271,8 @@ class CRooms(gym.Env):
         options: Optional[dict] = None,
     ) -> Union[ObsType, tuple[ObsType, dict]]:
         """Reset all environments, set seed if given"""
-        if seed is not None: self.seed(seed)
+        if seed is not None:
+            self.seed(seed)
         self.elapsed = np.zeros(self.num_envs, int)
         self.goal_yx = self._sample_goal(self.num_envs, self.rng)
         self.agent_yx = self._sample_agent(self.num_envs, self.rng)
@@ -200,9 +286,11 @@ class CRooms(gym.Env):
             self.elapsed[mask] = 0
             self.goal_yx[mask] = self._sample_goal(b, self.rng)
             self.agent_yx[mask] = self._sample_agent(b, self.rng)
-            self.agent_yx_velocity[mask] = 0.
+            self.agent_yx_velocity[mask] = 0.0
 
-    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
+    def step(
+        self, action: ActType
+    ) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
         """Step in environment
 
         Sample random action failure. Move agent(s) where move is valid.
@@ -228,21 +316,38 @@ class CRooms(gym.Env):
         If we attempt to enter a wall square, set velocity to 0 and sample a random point in current square"""
         if self.use_velocity:
             self.agent_yx_velocity += randomized_a_yx
-            self.agent_yx_velocity.clip(-self.max_velocity, self.max_velocity, self.agent_yx_velocity)
+            self.agent_yx_velocity.clip(
+                -self.max_velocity, self.max_velocity, self.agent_yx_velocity
+            )
             proposed_yx = self.agent_yx + self.agent_yx_velocity
-        else: proposed_yx = self.agent_yx + randomized_a_yx
-        proposed_yx = proposed_yx.clip(0, self.gridshape - 1 - 1e-6)  # Make sure we're still in grid
+        else:
+            proposed_yx = self.agent_yx + randomized_a_yx
+        proposed_yx = proposed_yx.clip(
+            0, self.gridshape - 1 - 1e-6
+        )  # Make sure we're still in grid
         oob = self._out_of_bounds(proposed_yx)
         self.agent_yx[~oob] = proposed_yx[~oob]  # Valid actions
-        if oob.any():  # TODO: Put agent in nearest valid grid square to proposed_yx, remove velocity
-            inv_ayx = grid_to_coord(coord_to_grid(self.agent_yx[oob], self.cell_size), self.cell_size)  # Invalid coordinates, resample such that agent stays in current square
-            self.agent_yx[oob] = np.clip(inv_ayx + self.rng.normal(scale=0.5, size=inv_ayx.shape), inv_ayx - self.cell_size / 2, inv_ayx + self.cell_size / 2 - 1e-8)
-            self.agent_yx_velocity[oob] = 0.  # This is why we compute oob, so we can reset velocity where needed
+        if (
+            oob.any()
+        ):  # TODO: Put agent in nearest valid grid square to proposed_yx, remove velocity
+            inv_ayx = grid_to_coord(
+                coord_to_grid(self.agent_yx[oob], self.cell_size), self.cell_size
+            )  # Invalid coordinates, resample such that agent stays in current square
+            self.agent_yx[oob] = np.clip(
+                inv_ayx + self.rng.normal(scale=0.5, size=inv_ayx.shape),
+                inv_ayx - self.cell_size / 2,
+                inv_ayx + self.cell_size / 2 - 1e-8,
+            )
+            self.agent_yx_velocity[
+                oob
+            ] = 0.0  # This is why we compute oob, so we can reset velocity where needed
         return oob
 
     def _out_of_bounds(self, proposed_yx: np.ndarray):
         """Return whether given coordinates correspond to empty/goal square.
 
         Rooms are surrounded by walls, so only need to check this"""
-        pyx = coord_to_grid(proposed_yx, self.cell_size)  # Continuous actions might takes us out of grid if we're going super fast
+        pyx = coord_to_grid(
+            proposed_yx, self.cell_size
+        )  # Continuous actions might takes us out of grid if we're going super fast
         return self.grid[tuple(pyx.T)] == -1

@@ -26,11 +26,19 @@ class COLORS:
 
 def resize(img: np.ndarray, scale_factor) -> np.ndarray:
     """Resize image by scale factor using cv2 interarea"""
-    return cv2.resize(img, (img.shape[0]*scale_factor, img.shape[1]*scale_factor), interpolation=cv2.INTER_AREA)
+    return cv2.resize(
+        img,
+        (img.shape[0] * scale_factor, img.shape[1] * scale_factor),
+        interpolation=cv2.INTER_AREA,
+    )
 
 
-def draw_text_at(img: np.ndarray, text: str, text_anchor: Tuple[int, int],
-                 text_color: Tuple[int, int, int] = (255, 255, 255)) -> np.ndarray:
+def draw_text_at(
+    img: np.ndarray,
+    text: str,
+    text_anchor: Tuple[int, int],
+    text_color: Tuple[int, int, int] = (255, 255, 255),
+) -> np.ndarray:
     """Use cv2 to draw anti-aliased text with default font text
 
     Args:
@@ -39,7 +47,16 @@ def draw_text_at(img: np.ndarray, text: str, text_anchor: Tuple[int, int],
         text_anchor: Text anchor in terms of (w,h) coordinates from top left
         text_color: RGB tuple
     """
-    cv2.putText(img, text, text_anchor, cv2.FONT_HERSHEY_SIMPLEX, 0.25, text_color, 1, lineType=cv2.LINE_AA)
+    cv2.putText(
+        img,
+        text,
+        text_anchor,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.25,
+        text_color,
+        1,
+        lineType=cv2.LINE_AA,
+    )
     return img
 
 
@@ -58,7 +75,10 @@ def tile_images(img_nhwc: Sequence[np.ndarray]) -> np.ndarray:  # pragma: no cov
     new_height = int(np.ceil(np.sqrt(n_images)))
     # new_width was named W before
     new_width = int(np.ceil(float(n_images) / new_height))
-    img_nhwc = np.array(list(img_nhwc) + [img_nhwc[0] * 0 for _ in range(n_images, new_height * new_width)])
+    img_nhwc = np.array(
+        list(img_nhwc)
+        + [img_nhwc[0] * 0 for _ in range(n_images, new_height * new_width)]
+    )
     # img_HWhwc
     out_image = img_nhwc.reshape((new_height, new_width, height, width, n_channels))
     # img_HhWwc

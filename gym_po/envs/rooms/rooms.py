@@ -1,10 +1,10 @@
 from functools import partial
 from typing import Tuple, Optional, Union, Sequence, Callable
 import numpy as np
-import gym
-from gym.core import ActType, ObsType
-from gym.utils import seeding
-from gym.vector.utils import batch_space
+import gymnasium
+from gymnasium.core import ActType, ObsType
+from gymnasium.utils import seeding
+from gymnasium.vector.utils import batch_space
 
 from .layouts import *
 from .utils import *
@@ -12,67 +12,91 @@ from .actions import *
 from .observations import *
 
 
-def get_observation_space_and_function(obs_type: str, grid: np.ndarray, obs_n: int) -> Tuple[gym.Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
+def get_observation_space_and_function(
+    obs_type: str, grid: np.ndarray, obs_n: int
+) -> Tuple[gymnasium.Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
     """Return space and an observation function"""
-    is_vector = 'vector' in obs_type
-    has_goal = 'goal' in obs_type
+    is_vector = "vector" in obs_type
+    has_goal = "goal" in obs_type
     a_max = np.array(grid.shape) - 2  # Max value of agent's observation
-    if 'room' in obs_type:  # No continuous variant
+    if "room" in obs_type:  # No continuous variant
         n = get_number_abstract_states(grid)
         if has_goal:  # Discrete state for agent AND goal combined
-            space = gym.spaces.Discrete(int(n ** 2))
+            space = gymnasium.spaces.Discrete(int(n**2))
             obs = lambda ayx, gyx: grid[tuple(ayx.T)] + n * grid[tuple(gyx.T)]
         else:
-            space = gym.spaces.Discrete(int(n))
+            space = gymnasium.spaces.Discrete(int(n))
             obs = lambda ayx, gyx: grid[tuple(ayx.T)]
-    elif 'mdp' in obs_type:
+    elif "mdp" in obs_type:
         if is_vector:  # Vector observation of position(s)
             if has_goal:
-                space = gym.spaces.Box(1, np.tile(a_max, 2), (4,), dtype=int)
+                space = gymnasium.spaces.Box(1, np.tile(a_max, 2), (4,), dtype=int)
                 obs = lambda ayx, gyx: np.concatenate((ayx, gyx), -1)
             else:
-                space = gym.spaces.Box(1, a_max, (2,), dtype=int)
+                space = gymnasium.spaces.Box(1, a_max, (2,), dtype=int)
                 obs = lambda ayx, gyx: ayx
         else:
             n, state_grid = get_number_discrete_states_and_conversion(grid)
             if has_goal:
-                space = gym.spaces.Discrete(int(n ** 2))
-                obs = lambda ayx, gyx: state_grid[tuple(ayx.T)] + n * state_grid[tuple(gyx.T)]
+                space = gymnasium.spaces.Discrete(int(n**2))
+                obs = (
+                    lambda ayx, gyx: state_grid[tuple(ayx.T)]
+                    + n * state_grid[tuple(gyx.T)]
+                )
             else:
-                space = gym.spaces.Discrete(int(n))
+                space = gymnasium.spaces.Discrete(int(n))
                 obs = lambda ayx, gyx: state_grid[tuple(ayx.T)]
-    elif 'hansen' in obs_type:  # No continuous. Cont converts to outputting a vector instead of scalar
-        base_n = 8 if '8' in obs_type else 4
+    elif (
+        "hansen" in obs_type
+    ):  # No continuous. Cont converts to outputting a vector instead of scalar
+        base_n = 8 if "8" in obs_type else 4
         if is_vector:
             if has_goal:
-                space = gym.spaces.Box(0, 2, (base_n,), dtype=int)
+                space = gymnasium.spaces.Box(0, 2, (base_n,), dtype=int)
                 obs = lambda ayx, gyx: get_hansen_vector_obs(ayx, grid, gyx, base_n)
             else:
-                space = gym.spaces.Box(0, 1, (base_n,), dtype=int)
+                space = gymnasium.spaces.Box(0, 1, (base_n,), dtype=int)
                 obs = lambda ayx, gyx: get_hansen_vector_obs(ayx, grid, None, base_n)
-        else: # No goal
-            space = gym.spaces.Discrete(int(2 ** base_n * (base_n + 1)))
+        else:  # No goal
+            space = gymnasium.spaces.Discrete(int(2**base_n * (base_n + 1)))
             obs = lambda ayx, gyx: get_hansen_obs(ayx, grid, gyx, base_n)
-    elif 'grid' in obs_type: # No continuous, no has goal
-        space = gym.spaces.Box(0, 2, (obs_n, obs_n), dtype=int)
+    elif "grid" in obs_type:  # No continuous, no has goal
+        space = gymnasium.spaces.Box(0, 2, (obs_n, obs_n), dtype=int)
         obs = lambda ayx, gyx: get_grid_obs(ayx, grid, gyx, obs_n)
     else:
-        raise NotImplementedError('Observation type not recognized')
+        raise NotImplementedError("Observation type not recognized")
     return space, obs
 
 
-class Rooms(gym.Env):
+class Rooms(gymnasium.Env):
     """Basic ROOMS domain adapted from "Markovian State and Action Abstraction"
-    
+
     See https://github.com/aijunbai/hplanning for official repo
     This is a vectorized version of the ROOMs domain.
     """
-    metadata = {"name": "Rooms", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
-    def __init__(self, num_envs: int, layout: str = '4', time_limit: int = 500,
-                 obs_type: str = 'mdp', obs_n: int = 3, action_failure_probability: float = 0.2, action_type: str = 'ordinal',
-                 agent_xy: Optional[Sequence[int]] = None, goal_xy: Optional[Sequence[int]] = (0, 0),
-                 step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
-                 **kwargs):
+
+    metadata = {
+        "name": "Rooms",
+        "render.modes": ["human", "rgb_array"],
+        "video.frames_per_second": 10,
+    }
+
+    def __init__(
+        self,
+        num_envs: int,
+        layout: str = "4",
+        time_limit: int = 500,
+        obs_type: str = "mdp",
+        obs_n: int = 3,
+        action_failure_probability: float = 0.2,
+        action_type: str = "ordinal",
+        agent_xy: Optional[Sequence[int]] = None,
+        goal_xy: Optional[Sequence[int]] = (0, 0),
+        step_reward: float = 0.0,
+        wall_reward: float = 0.0,
+        goal_reward: float = 1.0,
+        **kwargs,
+    ):
         """
         Args:
             num_envs: Number of environments
@@ -91,20 +115,28 @@ class Rooms(gym.Env):
             goal_reward: Reward for reaching goal
         """
         assert layout in LAYOUTS
-        self.metadata['name'] += f'__{layout}__{action_type}__{obs_type}'
+        self.metadata["name"] += f"__{layout}__{action_type}__{obs_type}"
         grid = np_to_grid(layout_to_np(LAYOUTS[layout]))
-        if 'b' in layout: layout = layout[:-1]  # Remove b for later indexing
+        if "b" in layout:
+            layout = layout[:-1]  # Remove b for later indexing
         self.grid = grid
         self.gridshape = np.array(grid.shape)
-        self.single_observation_space, self._get_obs = get_observation_space_and_function(obs_type, self.grid, obs_n)
-        self.valid_states = np.flatnonzero(grid >= 0)  # Places where we can put goal or agent
+        (
+            self.single_observation_space,
+            self._get_obs,
+        ) = get_observation_space_and_function(obs_type, self.grid, obs_n)
+        self.valid_states = np.flatnonzero(
+            grid >= 0
+        )  # Places where we can put goal or agent
         self.rng, _ = seeding.np_random()
 
-        self.actions = ACTIONS_CARDINAL if action_type == 'cardinal' else ACTIONS_ORDINAL
+        self.actions = (
+            ACTIONS_CARDINAL if action_type == "cardinal" else ACTIONS_ORDINAL
+        )
         # Boilerplate for vector environment
         self.num_envs = num_envs
         self.is_vector_env = True
-        self.single_action_space = gym.spaces.Discrete(self.actions.shape[0])
+        self.single_action_space = gymnasium.spaces.Discrete(self.actions.shape[0])
         self.action_space = batch_space(self.single_action_space, num_envs)
         self.observation_space = batch_space(self.single_observation_space, num_envs)
 
@@ -117,17 +149,27 @@ class Rooms(gym.Env):
         # Random or fixed goal/agent
         if goal_xy is not None:
             goal_yx = tuple(reversed(goal_xy))  # (x,y) to (y,x)
-            if grid[goal_yx] < 0: goal_yx = tuple(reversed(ENDS[layout]))
+            if grid[goal_yx] < 0:
+                goal_yx = tuple(reversed(ENDS[layout]))
             goal_yx = np.array(goal_yx)
             self._sample_goal = lambda b, rng: np.full((b, 2), goal_yx, dtype=int)
-        else: self._sample_goal = lambda b, rng: np.array(np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)).swapaxes(0,1)
+        else:
+            self._sample_goal = lambda b, rng: np.array(
+                np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)
+            ).swapaxes(0, 1)
         if agent_xy is not None:
             agent_yx = tuple(reversed(agent_xy))
             agent_yx = np.array(agent_yx)
-            if grid[agent_yx] < 0: agent_yx = tuple(reversed(STARTS[layout]))
+            if grid[agent_yx] < 0:
+                agent_yx = tuple(reversed(STARTS[layout]))
             self._sample_agent = lambda b, rng: np.full((b, 2), agent_yx, dtype=int)
-        else: self._sample_agent = lambda b, rng: np.array(np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)).swapaxes(0,1)
-        self.action_matrix = create_action_probability_matrix(self.actions.shape[0], action_failure_probability)
+        else:
+            self._sample_agent = lambda b, rng: np.array(
+                np.unravel_index(rng.choice(self.valid_states, b), self.grid.shape)
+            ).swapaxes(0, 1)
+        self.action_matrix = create_action_probability_matrix(
+            self.actions.shape[0], action_failure_probability
+        )
 
     def seed(self, seed: Optional[int] = None):
         """Set internal seed (returns sampled seed if none provided)"""
@@ -142,7 +184,8 @@ class Rooms(gym.Env):
         options: Optional[dict] = None,
     ) -> Union[ObsType, tuple[ObsType, dict]]:
         """Reset all environments, set seed if given"""
-        if seed is not None: self.seed(seed)
+        if seed is not None:
+            self.seed(seed)
         self.elapsed = np.zeros(self.num_envs, int)
         self.goal_yx = self._sample_goal(self.num_envs, self.rng)
         self.agent_yx = self._sample_agent(self.num_envs, self.rng)
@@ -156,7 +199,9 @@ class Rooms(gym.Env):
             self.goal_yx[mask] = self._sample_goal(b, self.rng)
             self.agent_yx[mask] = self._sample_agent(b, self.rng)
 
-    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
+    def step(
+        self, action: ActType
+    ) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
         """Step in environment
 
         Sample random action failure. Move agent(s) where move is valid.

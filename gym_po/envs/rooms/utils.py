@@ -1,9 +1,9 @@
-__all__ = ['grid_to_coord', 'coord_to_grid']
+__all__ = ["grid_to_coord", "coord_to_grid"]
 
 import numpy as np
 
 
-def grid_to_coord(grid_yx: np.ndarray, cell_size: float = 1.) -> np.ndarray:
+def grid_to_coord(grid_yx: np.ndarray, cell_size: float = 1.0) -> np.ndarray:
     """Convert grid y,x to coordinate xy (middle of given grid square)
 
     Places agent in middle of grid square
@@ -11,7 +11,7 @@ def grid_to_coord(grid_yx: np.ndarray, cell_size: float = 1.) -> np.ndarray:
     return (grid_yx * cell_size) + (cell_size / 2)
 
 
-def coord_to_grid(coord_yx: np.ndarray, cell_size: float = 1.) -> np.ndarray:
+def coord_to_grid(coord_yx: np.ndarray, cell_size: float = 1.0) -> np.ndarray:
     """Convert y,x coordinate to nearest grid square.
 
     Uses floor because anything from 0-1 is in square '0'

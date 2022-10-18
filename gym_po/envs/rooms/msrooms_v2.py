@@ -2,13 +2,12 @@ from typing import Tuple, Sequence, Union, Callable, Optional
 
 import numpy as np
 from dotsi import DotsiDict
-import gym
-from gym.core import ObsType, ActType
-
+import gymnasium
+from gymnasium.core import ObsType, ActType
+from gymnasium.spaces import Discrete, Box, Space
+from gymnasium.utils import seeding
+from gymnasium.vector.utils import batch_space
 from .render_utils import *
-from gym.spaces import Discrete, Box, Space
-from gym.utils import seeding
-from gym.vector.utils import batch_space
 from .observations import get_number_discrete_states_and_conversion
 from .actions import *
 
@@ -49,6 +48,8 @@ END_XYZ = (9, 7, -1)  # East hallway
 START_XYZ = (1, 1, 0)  # NW Cornergy
 SW = (11, 1); SW_NP = np.array(SW)  # Downstairs
 NE = (1, 11); NE_NP = np.array(NE)  # Upstairs
+upstairs = NE = np.array([1, 11])
+downstairs = SW = np.array([11, 1])
 
 # Constant integers for each object
 GR_CNST = DotsiDict({
@@ -231,14 +232,14 @@ def get_observation_space_and_function(obs_type: str, ms_grid: np.ndarray, obs_n
     else: raise NotImplementedError('Observation type not recognized')
     return space, obs
 
-class MultistoryFourRoomsEnvV2(gym.Env):
+class MultistoryFourRoomsEnvV2(gymnasium.Env):
     """Vectorized Multistory FourRooms environment, using tricks from ROOMS/CROOMS"""
     metadata = {"name": "MultistoryFourRoomsV2", "render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
 
     def __init__(self, num_envs: int, grid_z: int = 1, floor_map: str = BASE_FOURROOMS_MAP_WITH_STAIRS, time_limit: int = 500,
                  obs_type: str = 'mdp', obs_n: int = 3, action_failure_probability: float = (1./ 3), action_type: str = 'cardinal',
                  agent_xyz: Optional[Sequence[int]] = None, goal_xyz: Optional[Sequence[int]] = (0, 0, 0),
-                 step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1.,
+                 step_reward: float = 0., wall_reward: float = 0., goal_reward: float = 1., render_mode: Optional[str] = None,
                  **kwargs):
         """
 
@@ -266,13 +267,13 @@ class MultistoryFourRoomsEnvV2(gym.Env):
         self.valid_states = np.flatnonzero(self.grid > 0)
         self.valid_agent_states = np.ravel_multi_index(spawn_vs[:, spawn_vs[0] == 0], self.grid.shape)
         self.valid_goal_states = np.ravel_multi_index(spawn_vs[:, spawn_vs[0] == self.gridshape[0] - 1], self.grid.shape)
-        self.rng, _ = seeding.np_random()
+        self.render_mode = render_mode
 
         self.actions = ACTIONS_CARDINAL_Z if action_type == 'cardinal' else ACTIONS_ORDINAL_Z
         # Boilerplate for vector environment
         self.num_envs = num_envs
         self.is_vector_env = True
-        self.single_action_space = gym.spaces.Discrete(self.actions.shape[0])
+        self.single_action_space = Discrete(self.actions.shape[0])
         self.action_space = batch_space(self.single_action_space, num_envs)
         self.observation_space = batch_space(self.single_observation_space, num_envs)
 
@@ -298,34 +299,28 @@ class MultistoryFourRoomsEnvV2(gym.Env):
         else: self._sample_agent = lambda b, rng: np.array(np.unravel_index(rng.choice(self.valid_agent_states, b), self.grid.shape)).swapaxes(0,1)
         self.action_matrix = create_action_probability_matrix(self.actions.shape[0], action_failure_probability)
 
-    def seed(self, seed: Optional[int] = None):
-        """Set internal seed (returns sampled seed if none provided)"""
-        self.rng, seed = seeding.np_random(seed)
-        return seed
-
     def reset(
         self,
         *,
         seed: Optional[int] = None,
-        return_info: bool = False,
         options: Optional[dict] = None,
     ) -> Union[ObsType, tuple[ObsType, dict]]:
         """Reset all environments, set seed if given"""
-        if seed is not None: self.seed(seed)
+        super().reset(seed, options)
         self.elapsed = np.zeros(self.num_envs, int)
-        self.goal_zyx = self._sample_goal(self.num_envs, self.rng)
-        self.agent_zyx = self._sample_agent(self.num_envs, self.rng)
+        self.goal_zyx = self._sample_goal(self.num_envs, self.np_random)
+        self.agent_zyx = self._sample_agent(self.num_envs, self.np_random)
         obs = self._get_obs(self.agent_zyx, self.goal_zyx)
-        return obs
+        return obs, {}
 
     def _reset_some(self, mask: np.ndarray):
         """Reset only a subset of environments"""
         if b := mask.sum():
             self.elapsed[mask] = 0
-            self.goal_zyx[mask] = self._sample_goal(b, self.rng)
-            self.agent_zyx[mask] = self._sample_agent(b, self.rng)
+            self.goal_zyx[mask] = self._sample_goal(b, self.np_random)
+            self.agent_zyx[mask] = self._sample_agent(b, self.np_random)
 
-    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
+    def step(self, action: ActType) -> Tuple[ObsType, np.ndarray, np.ndarray, np.ndarray, Union[dict, list]]:
         """Step in environment
 
         Sample random action failure. Move agent(s) where move is valid.
@@ -333,7 +328,7 @@ class MultistoryFourRoomsEnvV2(gym.Env):
         """
         self.elapsed += 1
         # Movement
-        a = vectorized_multinomial_with_rng(self.action_matrix[action], self.rng)
+        a = vectorized_multinomial_with_rng(self.action_matrix[action], self.np_random)
         proposed_zyx = self.agent_zyx + self.actions[a]
         oob = self._out_of_bounds(proposed_zyx)
         self.agent_zyx[~oob] = proposed_zyx[~oob]
@@ -344,9 +339,9 @@ class MultistoryFourRoomsEnvV2(gym.Env):
         r += self.step_reward
         r[oob] = self.wall_reward
         r[d] = self.goal_reward
-        d |= self.elapsed > self.time_limit
-        self._reset_some(d)
-        return self._get_obs(self.agent_zyx, self.goal_zyx), r, d, [{}] * self.num_envs
+        truncated = self.elapsed > self.time_limit
+        self._reset_some(d | truncated)
+        return self._get_obs(self.agent_zyx, self.goal_zyx), r, d, truncated, {}
 
     def _out_of_bounds(self, proposed_zyx: np.ndarray) -> np.ndarray:
         """Return whether given coordinates correspond to empty/goal square.
