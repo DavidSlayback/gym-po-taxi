@@ -7,6 +7,8 @@ from gym import error, logger, spaces
 import numpy as np
 import gym
 
+from gym.envs.mujoco.mujoco_env import MujocoEnv
+
 
 DEFAULT_SIZE = 480
 

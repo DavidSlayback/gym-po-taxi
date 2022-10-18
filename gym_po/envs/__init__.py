@@ -6,13 +6,8 @@ from .multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv, HansenMultistory
 from .rooms.rooms import Rooms
 from .rooms.crooms import CRooms
 
-from gym.envs.registration import register
+from gymnasium.envs.registration import register
 
-# register(
-#     id='pdomains-two-boxes-v0',
-#     entry_point='pdomains.two_boxes:BoxEnv',
-#     max_episode_steps=100,
-# )
 
 register(
     id='pdomains-ant-heaven-hell-v1',

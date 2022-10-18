@@ -26,7 +26,7 @@ def find_data_files(package_dir, patterns, excludes=()):
 
 setup(
     name="gym_po",
-    version="0.0.3",
+    version="0.0.4",
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Development Status :: 3 - Alpha",
@@ -36,7 +36,7 @@ setup(
         "Operating System :: MacOS :: MacOS X",
     ],
     packages=[pkg for pkg in find_packages() if pkg.startswith('gym_po')],
-    install_requires=["gym>=0.21.0", "numpy<1.23,>=1.21", "numba>=0.55.1", "pygame", "dotsi"],
+    install_requires=["gymnasium>=0.26.0", "numpy>=1.23", "numba>=0.56.3", "pygame", "dotsi"],
     python_requires=">=3.8",
     package_data={
         'gym_po':

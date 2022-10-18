@@ -8,18 +8,22 @@ from envs.rooms.rooms import Rooms
 from envs.rooms.crooms import CRooms
 from envs.rooms.msrooms_v2 import generate_layout_and_img, MultistoryFourRoomsEnvV2
 # from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
-# from envs.ant_tag import AntTagEnv
+from envs.ant_tag import AntTagEnv
+from envs.ant_heaven_hell import AntHeavenHellEnv
 import torch
 v = torch.ones(1, device='cuda')
-from brax import envs
-from brax.envs import to_torch
 
 if __name__ == "__main__":
-    e = MultistoryFourRoomsEnvV2(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
+    e = AntHeavenHellEnv(render_mode='human')
+    # e = MultistoryFourRoomsEnvV2(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
     # env = envs.create_gym_env('walker2d', 20)
     # env = to_torch.JaxToTorchWrapper(env, device='cuda')
     # e = Rooms(16, '8b', obs_type='mdp', action_type='yx')
     o = e.reset()
+    for _ in range(100):
+        o2 = e.step(e.action_space.sample())
+        e.render()
+
     # e = AntTagEnv()
     # e = DiscreteActionCarVecEnv(7, 20, time_limit=160)
     # e = TaxiVecEnv(8, num_passengers=2, hansen_obs=True, time_limit=2000, map=EXTENDED_TAXI_MAP)
@@ -35,9 +39,9 @@ if __name__ == "__main__":
     # o = e.reset()
     # on = e.single_observation_space.n
     # assert (o <= on).all()
-    for t in range(100000):
-        o, r, d, info = e.step(e.action_space.sample())
-        if d.any(): print(d.nonzero()[0], r[d.nonzero()[0]])
+    # for t in range(100000):
+    #     o, r, d, trunc, info = e.step(e.action_space.sample())
+    #     if np.any(d | trunc): print(d.nonzero()[0], r[d.nonzero()[0]])
         # e.render()
         # e.render(idx=np.arange(8))
         # if (r > 0).any(): print('Reward!')

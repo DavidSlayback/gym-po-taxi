@@ -13,6 +13,23 @@ from .observations import get_number_discrete_states_and_conversion
 from .actions import *
 
 # 13x13 FourRooms, upstairs and downstairs locations marked by "U" and "D"
+numbered_four_rooms_map = np.array(
+    [
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
+        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
+        [-1, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, -1],
+        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
+        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
+        [-1, -1, 2, -1, -1, -1, -1, 0, 0, 0, 0, 0, -1],
+        [-1, 2, 2, 2, 2, 2, -1, -1, -1, 0, -1, -1, -1],
+        [-1, 2, 2, 2, 2, 2, -1, 1, 1, 1, 1, 1, -1],
+        [-1, 2, 2, 2, 2, 2, -1, 1, 1, 1, 1, 1, -1],
+        [-1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, -1],
+        [-1, 2, 2, 2, 2, 2, -1, 1, 1, 1, 1, 1, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+    ]
+)
 BASE_FOURROOMS_MAP_WITH_STAIRS = '''xxxxxxxxxxxxx
                                     x11111x00000x
                                     x11111x00000x
@@ -29,7 +46,7 @@ BASE_FOURROOMS_MAP_WITH_STAIRS = '''xxxxxxxxxxxxx
 WALL_CHAR = 'x'
 # Fixed locations
 END_XYZ = (9, 7, -1)  # East hallway
-START_XYZ = (1, 1, 0)  # NW Corner
+START_XYZ = (1, 1, 0)  # NW Cornergy
 SW = (11, 1); SW_NP = np.array(SW)  # Downstairs
 NE = (1, 11); NE_NP = np.array(NE)  # Upstairs
 

@@ -86,10 +86,6 @@
 
 
     <!-- Create goal and subgoal visualizations -->
-    <!-- <body name="goal_platform" pos="0 0 0.4" mocap="true">
-        <site type="box" size="0.4 0.4 0.2" rgba="1 1 0 0" />
-    </body> -->
-
     <body name="target" pos="-4.75 4.75 0.4" mocap="true">
         <site name="target" type="sphere" size="0.4" rgba="0 1 0 1" />
     </body>
@@ -102,17 +98,6 @@
         <site type="sphere" size="1.5" rgba="1 0 0 0.3" />
     </body>
 
-<!--     <body name="left_area" pos="-6.25 6.0 0.4">
-        <site name="left_area" type="sphere" size="2.0" rgba="0 1 0 0.5" />
-    </body> -->
-
-<!--     <body name="hell" pos="6.25 6.0 0.4" mocap="true">
-        <site name="hell" type="sphere" size="0.4" rgba="0 1 0 1" />
-    </body>
-
-    <body name="right_area" pos="6.25 6.0 0.4">
-        <site name="right_area" type="sphere" size="2.0" rgba="1 0 0 0.5" />
-    </body> -->
 
     <!-- Subgoals -->
     <body name="subgoal_0" pos="0 0 0.4" mocap="true">
