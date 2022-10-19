@@ -14,8 +14,8 @@ import torch
 v = torch.ones(1, device='cuda')
 
 if __name__ == "__main__":
-    e = AntHeavenHellEnv(render_mode='human')
-    # e = MultistoryFourRoomsEnvV2(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
+    # e = AntHeavenHellEnv(render_mode='human')
+    e = MultistoryFourRoomsEnvV2(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
     # env = envs.create_gym_env('walker2d', 20)
     # env = to_torch.JaxToTorchWrapper(env, device='cuda')
     # e = Rooms(16, '8b', obs_type='mdp', action_type='yx')

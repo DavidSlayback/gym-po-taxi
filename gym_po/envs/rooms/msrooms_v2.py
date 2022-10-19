@@ -1,18 +1,46 @@
 from typing import Tuple, Sequence, Union, Callable, Optional
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from dotsi import DotsiDict
 import gymnasium
 from gymnasium.core import ObsType, ActType
 from gymnasium.spaces import Discrete, Box, Space
-from gymnasium.utils import seeding
 from gymnasium.vector.utils import batch_space
 from .render_utils import *
 from .observations import get_number_discrete_states_and_conversion
 from .actions import *
 
+
+# Fixed locations
+END_XYZ = (9, 7, -1)  # East hallway
+START_XYZ = (1, 1, 0)  # NW Cornergy
+SW = (11, 1); SW_NP = np.array(SW)  # Downstairs
+NE = (1, 11); NE_NP = np.array(NE)  # Upstairs
+upstairs = NE = np.array([1, 11])
+downstairs = SW = np.array([11, 1])
+
+# Constant integers for each object
+GR_CNST = DotsiDict({
+    'wall': 0,
+    'goal': 1,
+    'stair_down': 2,
+    'stair_up': 3,
+})
+MAX_GR_CNST = len(GR_CNST) - 1
+# Constant colors, can be indexed by values above
+GR_CNST_COLORS = DotsiDict({
+    'wall': COLORS.black,
+    'empty': COLORS.gray_dark,
+    'agent': COLORS.green,
+    'goal': COLORS.blue,
+    'stair_up': COLORS.gray_light,
+    'stair_down': COLORS.gray,
+})
+
+
 # 13x13 FourRooms, upstairs and downstairs locations marked by "U" and "D"
-numbered_four_rooms_map = np.array(
+FR_MAP = np.array(
     [
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
@@ -29,47 +57,28 @@ numbered_four_rooms_map = np.array(
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
     ]
 )
-BASE_FOURROOMS_MAP_WITH_STAIRS = '''xxxxxxxxxxxxx
-                                    x11111x00000x
-                                    x11111x00000x
-                                    x11111100000x
-                                    x11111x00000x
-                                    x11111x00000x
-                                    xx2xxxx00000x
-                                    x22222xxx3xxx
-                                    x22222x33333x
-                                    x22222x33333x
-                                    x22222333333x
-                                    x22222x33333x
-                                    xxxxxxxxxxxxx'''
-WALL_CHAR = 'x'
-# Fixed locations
-END_XYZ = (9, 7, -1)  # East hallway
-START_XYZ = (1, 1, 0)  # NW Cornergy
-SW = (11, 1); SW_NP = np.array(SW)  # Downstairs
-NE = (1, 11); NE_NP = np.array(NE)  # Upstairs
-upstairs = NE = np.array([1, 11])
-downstairs = SW = np.array([11, 1])
 
-# Constant integers for each object
-GR_CNST = DotsiDict({
-    'wall': 0,
-    'goal': 1,
-    'stair_up': 2,
-    'stair_down': 3
-})
-MAX_GR_CNST = len(GR_CNST) - 1
+def rooms_map_to_multistory(map: NDArray[int] = FR_MAP, num_floors: int = 1) -> Tuple[NDArray[int], NDArray[int]]:
+    """Convert numbered room map into multistory walking and room map
 
+    Args:
+        map: Room map (e.g., FR_MAP)
+        num_floors: Number of floors
 
-# Constant colors, can be indexed by values above
-GR_CNST_COLORS = DotsiDict({
-    'wall': COLORS.black,
-    'empty': COLORS.gray_dark,
-    'agent': COLORS.green,
-    'goal': COLORS.blue,
-    'stair_up': COLORS.gray_light,
-    'stair_down': COLORS.gray
-})
+    Returns:
+        walk_map: Multistory walking map
+        room_map: Multistory rooms map (room numbers increase based on floors)
+    """
+    walk_map = map.copy()
+    walk_map[map >= 0] = 0  # Alias the rooms for this layout
+    walk_map += 1  # Walls are 0s, everything else is 1
+    ms = np.stack([walk_map for _ in range(num_floors)], 0)
+    n_rooms = map.max()  # can work with different numbers of rooms
+    ms_rooms = np.stack([map[map >= 0] + i * n_rooms for i in range(num_floors)], 0)
+    if num_floors > 1:
+        ms[1:, downstairs[0], downstairs[1]] = GR_CNST.stair_down
+        ms[:-1, upstairs[0], upstairs[1]] = GR_CNST.stair_up
+    return ms, ms_rooms
 
 
 def get_grid_obs(agent_zyx: np.ndarray, grid: np.ndarray, goal_zyx: np.ndarray, n: int = 3) -> np.ndarray:
