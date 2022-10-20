@@ -6,13 +6,16 @@ __all__ = [
     "get_hansen_vector_obs",
 ]
 from typing import Tuple, Optional
+
 import numpy as np
-from .actions import ACTIONS_CARDINAL, ACTIONS_ORDINAL
+from numpy.typing import NDArray
+
+from .action_utils import ACTIONS_CARDINAL, ACTIONS_ORDINAL
 
 
 def get_number_discrete_states_and_conversion(
-    grid: np.ndarray,
-) -> Tuple[int, np.ndarray]:
+    grid: NDArray[int],
+) -> Tuple[int, NDArray[int]]:
     """Count the number of possible state observation given a gridified version of a layout
 
     Args:
@@ -26,7 +29,7 @@ def get_number_discrete_states_and_conversion(
     return n_states, state_grid
 
 
-def get_number_abstract_states(grid: np.ndarray) -> int:
+def get_number_abstract_states(grid: NDArray[int]) -> int:
     """Count number of rooms
 
     Args:
@@ -39,7 +42,7 @@ def get_number_abstract_states(grid: np.ndarray) -> int:
 
 
 def get_hansen_obs(
-    agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, hansen_n: int = 8
+    agent_yx: NDArray[int], grid: NDArray[int], goal_yx: NDArray[int], hansen_n: int = 8
 ) -> int:
     """Get hansen observation of agent(s) (empty, wall), goal in (null, N, E, S, W) based on grid
 
@@ -69,8 +72,8 @@ def get_hansen_obs(
 
 
 def get_grid_obs(
-    agent_yx: np.ndarray, grid: np.ndarray, goal_yx: np.ndarray, n: int = 3
-) -> np.ndarray:
+    agent_yx: NDArray[int], grid: NDArray[int], goal_yx: NDArray[int], n: int = 3
+) -> NDArray[int]:
     """Return grid observation
 
     Args:
@@ -101,11 +104,11 @@ def get_grid_obs(
 
 
 def get_hansen_vector_obs(
-    agent_yx: np.ndarray,
-    grid: np.ndarray,
+    agent_yx: NDArray[int],
+    grid: NDArray[int],
     goal_yx: Optional[np.ndarray] = None,
     hansen_n: int = 8,
-) -> np.ndarray:
+) -> NDArray[int]:
     """Same as above, but a vector representation (like the grid obs, but flattened)
 
     Args:

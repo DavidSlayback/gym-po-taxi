@@ -1,20 +1,20 @@
-from functools import partial
 from typing import Tuple, Optional, Union, Sequence, Callable
-import numpy as np
+
 import gymnasium
+import numpy as np
+from numpy.typing import NDArray
 from gymnasium.core import ActType, ObsType
 from gymnasium.utils import seeding
 from gymnasium.vector.utils import batch_space
 
+from .action_utils import *
 from .layouts import *
-from .utils import *
-from .actions import *
 from .observations import *
 
 
 def get_observation_space_and_function(
-    obs_type: str, grid: np.ndarray, obs_n: int
-) -> Tuple[gymnasium.Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
+    obs_type: str, grid: NDArray[int], obs_n: int
+) -> Tuple[gymnasium.Space, Callable[[NDArray[int], NDArray[int]], NDArray[int]]]:
     """Return space and an observation function"""
     is_vector = "vector" in obs_type
     has_goal = "goal" in obs_type
@@ -68,7 +68,7 @@ def get_observation_space_and_function(
     return space, obs
 
 
-class Rooms(gymnasium.Env):
+class RoomsEnv(gymnasium.Env):
     """Basic ROOMS domain adapted from "Markovian State and Action Abstraction"
 
     See https://github.com/aijunbai/hplanning for official repo
@@ -77,8 +77,8 @@ class Rooms(gymnasium.Env):
 
     metadata = {
         "name": "Rooms",
-        "render.modes": ["human", "rgb_array"],
-        "video.frames_per_second": 10,
+        "render_modes": ["human", "rgb_array"],
+        "render_fps": 10,
     }
 
     def __init__(
@@ -95,6 +95,7 @@ class Rooms(gymnasium.Env):
         step_reward: float = 0.0,
         wall_reward: float = 0.0,
         goal_reward: float = 1.0,
+        render_mode: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -113,6 +114,7 @@ class Rooms(gymnasium.Env):
             step_reward: Reward for each step
             wall_reward: Reward for hitting a wall
             goal_reward: Reward for reaching goal
+            render_mode: TODO
         """
         assert layout in LAYOUTS
         self.metadata["name"] += f"__{layout}__{action_type}__{obs_type}"
@@ -145,6 +147,7 @@ class Rooms(gymnasium.Env):
         self.step_reward = step_reward
         self.goal_reward = goal_reward
         self.wall_reward = wall_reward
+        self.render_mode = render_mode
 
         # Random or fixed goal/agent
         if goal_xy is not None:
@@ -171,37 +174,32 @@ class Rooms(gymnasium.Env):
             self.actions.shape[0], action_failure_probability
         )
 
-    def seed(self, seed: Optional[int] = None):
-        """Set internal seed (returns sampled seed if none provided)"""
-        self.rng, seed = seeding.np_random(seed)
-        return seed
-
     def reset(
         self,
         *,
         seed: Optional[int] = None,
-        return_info: bool = False,
         options: Optional[dict] = None,
     ) -> Union[ObsType, tuple[ObsType, dict]]:
         """Reset all environments, set seed if given"""
-        if seed is not None:
-            self.seed(seed)
+        super().reset(seed=seed, options=options)
         self.elapsed = np.zeros(self.num_envs, int)
-        self.goal_yx = self._sample_goal(self.num_envs, self.rng)
-        self.agent_yx = self._sample_agent(self.num_envs, self.rng)
+        self.goal_yx = self._sample_goal(self.num_envs, self.np_random)
+        self.agent_yx = self._sample_agent(self.num_envs, self.np_random)
         obs = self._get_obs(self.agent_yx, self.goal_yx)
         return obs
 
-    def _reset_some(self, mask: np.ndarray):
+    def _reset_some(self, mask: NDArray[bool]):
         """Reset only a subset of environments"""
         if b := mask.sum():
             self.elapsed[mask] = 0
-            self.goal_yx[mask] = self._sample_goal(b, self.rng)
-            self.agent_yx[mask] = self._sample_agent(b, self.rng)
+            self.goal_yx[mask] = self._sample_goal(b, self.np_random)
+            self.agent_yx[mask] = self._sample_agent(b, self.np_random)
 
     def step(
         self, action: ActType
-    ) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
+    ) -> Tuple[
+        ObsType, NDArray[float], NDArray[bool], NDArray[bool], Union[dict, list]
+    ]:
         """Step in environment
 
         Sample random action failure. Move agent(s) where move is valid.
@@ -209,7 +207,7 @@ class Rooms(gymnasium.Env):
         """
         self.elapsed += 1
         # Movement
-        a = vectorized_multinomial_with_rng(self.action_matrix[action], self.rng)
+        a = vectorized_multinomial_with_rng(self.action_matrix[action], self.np_random)
         proposed_yx = self.agent_yx + self.actions[a]
         oob = self._out_of_bounds(proposed_yx)
         self.agent_yx[~oob] = proposed_yx[~oob]
@@ -219,15 +217,10 @@ class Rooms(gymnasium.Env):
         r += self.step_reward
         r[oob] = self.wall_reward
         r[d] = self.goal_reward
-        d |= self.elapsed > self.time_limit
-        self._reset_some(d)
-        return self._get_obs(self.agent_yx, self.goal_yx), r, d, [{}] * self.num_envs
+        truncated = self.elapsed > self.time_limit
+        self._reset_some(d | truncated)
+        return self._get_obs(self.agent_yx, self.goal_yx), r, d, truncated, {}
 
-    def _out_of_bounds(self, proposed_yx: np.ndarray):
-        """Return whether given coordinates correspond to empty/goal square.
-
-        Rooms are surrounded by walls, so only need to check this"""
-        # oob = (proposed_yx >= self.gridshape[None, :]).any(-1) | (proposed_yx < 0).any(-1)
-        # oob[~oob] = self.grid[tuple(proposed_yx[~oob].T)] == -1
-        # return oob
+    def _out_of_bounds(self, proposed_yx: NDArray[int]):
+        """Return whether given coordinates correspond to empty/goal square"""
         return self.grid[tuple(proposed_yx.T)] == -1

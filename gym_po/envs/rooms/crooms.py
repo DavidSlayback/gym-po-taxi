@@ -1,20 +1,21 @@
-from functools import partial
 from typing import Tuple, Optional, Union, Sequence, Callable
-import numpy as np
+
 import gymnasium
+import numpy as np
+from numpy.typing import NDArray
 from gymnasium.core import ActType, ObsType
 from gymnasium.utils import seeding
 from gymnasium.vector.utils import batch_space
 
+from .action_utils import *
 from .layouts import *
-from .utils import *
-from .actions import *
 from .observations import *
+from .utils import *
 
 
 def get_observation_space_and_function(
-    obs_type: str, grid: np.ndarray, obs_m: int, cell_size: float = 1.0
-) -> Tuple[gymnasium.Space, Callable[[np.ndarray, np.ndarray], np.ndarray]]:
+    obs_type: str, grid: NDArray[int], obs_m: int, cell_size: float = 1.0
+) -> Tuple[gymnasium.Space, Callable[[NDArray, NDArray], NDArray]]:
     """Return space and an observation function"""
     is_vector = "vector" in obs_type
     has_goal = "goal" in obs_type
@@ -87,28 +88,7 @@ def get_observation_space_and_function(
     return space, obs
 
 
-def get_lidar_obs(
-    agent_yx: np.ndarray,
-    grid: np.ndarray,
-    goal_yx: np.ndarray,
-    n_bins: int = 8,
-    obs_m: float = 3.0,
-    cell_size: float = 1.0,
-) -> np.ndarray:
-    """Get rangefinder observation from agent"""
-    angles = np.arange(0, n_bins, 360 / n_bins)
-    # Fill in goal
-    relative_yx = goal_yx - agent_yx
-    goal_in_range = ((goal_yx - agent_yx) ** 2).sum(
-        -1
-    ) <= obs_m  # Goal is within observation range
-    obs = np.zeros((agent_yx.shape[0], n_bins + 2))
-    obs[goal_in_range] = relative_yx
-    # TODO: Fill in distance to nearest wall in each direction
-    return obs
-
-
-class CRooms(gymnasium.Env):
+class CRoomsEnv(gymnasium.Env):
     """Basic CROOMS domain adapted from "Markovian State and Action Abstraction"
 
     See https://github.com/aijunbai/hplanning for official repo
@@ -130,7 +110,6 @@ class CRooms(gymnasium.Env):
         cell_size: float = 1.0,
         obs_type: str = "mdp",
         obs_m: int = 3,
-        obs_bins: int = 8,
         action_failure_probability: float = 0.2,
         action_type: str = "yx",
         action_std: float = 0.2,
@@ -141,6 +120,7 @@ class CRooms(gymnasium.Env):
         wall_reward: float = 0.0,
         goal_reward: float = 1.0,
         goal_threshold: float = 0.5,
+        render_mode: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -158,7 +138,6 @@ class CRooms(gymnasium.Env):
                 'grid': Integer grid squares (mxm)
                 TODO: 'lidar': [bins+2,] vector of range to nearest wall, then 2D for relative xy position of goal
             obs_m: Range of observation (m) (or size of grid). If wall/goal is out of range, that bin will be 0
-            obs_bins: Number of observation bins
 
             action_failure_probability: Likelihood that taking one action fails and chooses another
             action_type: 'ordinal' (8D compass) or 'cardinal' (4D compass) or 'yx' (2D continuous)
@@ -170,6 +149,7 @@ class CRooms(gymnasium.Env):
             wall_reward: Reward for hitting a wall
             goal_reward: Reward for reaching goal
             goal_threshold: Threshold for being in range of goal
+            render_mode
         """
         assert layout in LAYOUTS
         self.metadata["name"] += f"__{layout}__{action_type}__{obs_type}"
@@ -192,7 +172,9 @@ class CRooms(gymnasium.Env):
         if action_type == "yx":
             self.single_action_space = gymnasium.spaces.Box(-1.0, 1.0, (2,))
 
-            def sample_action(a: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+            def sample_action(
+                a: NDArray[float], rng: np.random.Generator
+            ) -> NDArray[float]:
                 return a + rng.normal(scale=action_std, size=a.shape)
 
             self._sample_action = sample_action
@@ -203,7 +185,9 @@ class CRooms(gymnasium.Env):
             )
             self.single_action_space = gymnasium.spaces.Discrete(actions.shape[0])
 
-            def sample_action(a: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+            def sample_action(
+                a: NDArray[int], rng: np.random.Generator
+            ) -> NDArray[float]:
                 a = vectorized_multinomial_with_rng(action_matrix[a], rng)
                 a = actions[a]
                 if action_std:
@@ -227,6 +211,7 @@ class CRooms(gymnasium.Env):
         self.goal_threshold = goal_threshold
         self.cell_size = cell_size
         self.action_power = action_power
+        self.render_mode = render_mode
 
         # Random or fixed goal/agent
         if goal_xy is not None:
@@ -280,7 +265,7 @@ class CRooms(gymnasium.Env):
         obs = self._get_obs(self.agent_yx, self.goal_yx)
         return obs
 
-    def _reset_some(self, mask: np.ndarray):
+    def _reset_some(self, mask: NDArray):
         """Reset only a subset of environments"""
         if b := mask.sum():
             self.elapsed[mask] = 0
@@ -290,7 +275,9 @@ class CRooms(gymnasium.Env):
 
     def step(
         self, action: ActType
-    ) -> Tuple[ObsType, np.ndarray, np.ndarray, Union[dict, list]]:
+    ) -> Tuple[
+        ObsType, NDArray[float], NDArray[bool], NDArray[bool], Union[dict, list]
+    ]:
         """Step in environment
 
         Sample random action failure. Move agent(s) where move is valid.
@@ -306,11 +293,11 @@ class CRooms(gymnasium.Env):
         r += self.step_reward
         r[oob] = self.wall_reward
         r[d] = self.goal_reward
-        d |= self.elapsed > self.time_limit
-        self._reset_some(d)
-        return self._get_obs(self.agent_yx, self.goal_yx), r, d, [{}] * self.num_envs
+        truncated = self.elapsed > self.time_limit
+        self._reset_some(d | truncated)
+        return self._get_obs(self.agent_yx, self.goal_yx), r, d, truncated, {}
 
-    def _apply_action(self, randomized_a_yx: np.ndarray) -> np.ndarray:
+    def _apply_action(self, randomized_a_yx: NDArray) -> np.ndarray:
         """Actually apply action. Accounts for velocity/position
 
         If we attempt to enter a wall square, set velocity to 0 and sample a random point in current square"""
@@ -343,11 +330,9 @@ class CRooms(gymnasium.Env):
             ] = 0.0  # This is why we compute oob, so we can reset velocity where needed
         return oob
 
-    def _out_of_bounds(self, proposed_yx: np.ndarray):
-        """Return whether given coordinates correspond to empty/goal square.
-
-        Rooms are surrounded by walls, so only need to check this"""
+    def _out_of_bounds(self, proposed_yx: NDArray):
+        """Return whether given coordinates correspond to empty/goal square"""
         pyx = coord_to_grid(
             proposed_yx, self.cell_size
-        )  # Continuous actions might takes us out of grid if we're going super fast
+        )  # Continuous actions might take us out of grid if we're going super fast
         return self.grid[tuple(pyx.T)] == -1

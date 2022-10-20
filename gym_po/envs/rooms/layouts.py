@@ -1,6 +1,6 @@
 __all__ = ["LAYOUTS", "layout_to_np", "np_to_grid", "ENDS", "STARTS"]
-from typing import Tuple
 import numpy as np
+from numpy.typing import NDArray
 
 # Various ROOMs layouts
 LAYOUTS = {
@@ -214,12 +214,12 @@ STARTS = {
 }
 
 
-def layout_to_np(layout: str) -> np.ndarray:
+def layout_to_np(layout: str) -> NDArray:
     """Convert layout string to numpy char array"""
     return np.asarray([t.strip() for t in layout.splitlines()], dtype="c").astype("U")
 
 
-def np_to_grid(np_layout: np.ndarray) -> np.ndarray:
+def np_to_grid(np_layout: NDArray) -> NDArray[int]:
     """Convert numpy char array to state-abstracted integer grid"""
     state_aliases = np.unique(np_layout)
     state_aliases_without_wall = np.delete(

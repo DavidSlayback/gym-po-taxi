@@ -1,10 +1,12 @@
 __all__ = ["CarVecEnv", "DiscreteActionCarVecEnv"]
 import os
 from typing import Optional, Tuple
+
 import gymnasium
 import numpy as np
 from gymnasium import spaces
-from gymnasium.core import ObsType, ActType
+from gymnasium.core import ObsType
+from numpy.typing import NDArray
 
 if os.name != "nt":
     # Windows can't handle headless (missing EGL dll)
@@ -15,12 +17,11 @@ if os.name != "nt":
 #     from gym.envs.classic_control import rendering as visualize  # Use pyglet
 # except:
 visualize = None  # Use number line
-from gymnasium.utils import seeding
 from gymnasium.vector.utils import batch_space
 
 
 class CarVecEnv(gymnasium.Env):
-    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
     # Physics and task params
     MAX_POS = 1.1
     MIN_POS = -MAX_POS
@@ -50,7 +51,7 @@ class CarVecEnv(gymnasium.Env):
         self,
         num_envs: int,
         time_limit: int = 160,
-        # rendering=False,
+        render_mode: Optional[str] = None,
     ):
         self.num_envs = num_envs
         self.is_vector_env = True
@@ -67,6 +68,7 @@ class CarVecEnv(gymnasium.Env):
 
         self.setup_view = False
         self.viewer = None
+        self.render_mode = render_mode
 
         self.s = np.zeros((self.num_envs, 3), dtype=np.float32)
         self.time_limit = time_limit
@@ -81,12 +83,14 @@ class CarVecEnv(gymnasium.Env):
             )
         ).astype(int)
         self.PIXEL_FLAGS = self.pixel_conversion([-1, 1])
+
     def reset(
         self,
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ) -> Tuple[ObsType, dict]:
+        super().reset(seed=seed, options=options)
         self._reset_mask(np.ones(self.num_envs, dtype=bool))
         return self._obs(), {}
 
@@ -107,7 +111,7 @@ class CarVecEnv(gymnasium.Env):
             if mask[0] & (self.viewer is not None):
                 self._draw_flags()  # Redraw flags if we sampled 0 index
 
-    def step(self, actions: np.ndarray):
+    def step(self, actions: NDArray[float]):
         self.elapsed += 1
         actions = actions.flatten()
         force = np.clip(actions, self.MIN_ACT, self.MAX_ACT)
@@ -139,7 +143,7 @@ class CarVecEnv(gymnasium.Env):
     def _obs(self):
         return self.s
 
-    def render(self, mode="human"):
+    def render(self):
         if visualize is not None:  # Standard classic control rendering
             self._setup_view()
             pos = self.s[0, 0]
@@ -147,7 +151,7 @@ class CarVecEnv(gymnasium.Env):
                 (pos - self.MIN_POS) * self.SCALE,
                 self.HEIGHT * self.SCALE,
             )
-            return self.viewer.render(return_rgb_array=mode == "rgb_array")
+            return self.viewer.render(return_rgb_array=self.render_mode == "rbg_array")
         else:
             pos = self.s[0, 0]  # Get float position
             pixel_pos = self.pixel_conversion(pos)
@@ -170,7 +174,7 @@ class CarVecEnv(gymnasium.Env):
             img[:, priest_poses[0] : priest_poses[0] + self.PIXEL_WIDTH, 2] = 128
             img[:, priest_poses[2] : priest_poses[2] + self.PIXEL_WIDTH, 2] = 128
             img[:, priest_poses[1] : priest_poses[1] + self.PIXEL_WIDTH, 2] = 255
-            if mode == "rgb" or mode == "rgb_array":
+            if self.render_mode == "rgb_array":
                 return img
             else:
                 import pygame
@@ -294,6 +298,6 @@ class DiscreteActionCarVecEnv(CarVecEnv):
         self.single_action_space = spaces.Discrete(num_actions)
         self.action_space = batch_space(self.single_action_space, self.num_envs)
 
-    def step(self, actions: np.ndarray):
+    def step(self, actions: NDArray[float]):
         actions = self._actions[actions]
         return super().step(actions)

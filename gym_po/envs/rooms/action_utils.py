@@ -49,7 +49,7 @@ def create_action_probability_matrix(
 
 
 def add_gaussian_noise(
-    actions: np.ndarray,
+    actionsNDArray,
     action_std: float = 0.2,
     rng: np.random.Generator = np.random.default_rng(),
 ) -> np.ndarray:
@@ -58,7 +58,7 @@ def add_gaussian_noise(
 
 
 def randomize_action_sign(
-    actions: np.ndarray,
+    actionsNDArray,
     action_failure_probability: float = 0.2,
     rng: np.random.Generator = np.random.default_rng(),
 ) -> np.ndarray:
@@ -71,7 +71,7 @@ def randomize_action_sign(
 
 
 def vectorized_multinomial_with_rng(
-    selected_prob_matrix: np.ndarray, rng: np.random.Generator = np.random.default_rng()
+    selected_prob_matrixNDArray, rng: np.random.Generator = np.random.default_rng()
 ) -> np.ndarray:
     """Vectorized sample from [B,N] probabilitity matrix
     Lightly edited from https://stackoverflow.com/a/34190035/2504700

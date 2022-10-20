@@ -26,7 +26,7 @@ class COLORS:
     teal = np.array([0, 128, 128], dtype=np.uint8)
 
 
-def resize(img: np.ndarray, scale_factor) -> np.ndarray:
+def resize(imgNDArray, scale_factor) -> np.ndarray:
     """Resize image by scale factor using cv2 interarea"""
     return cv2.resize(
         img,
@@ -36,7 +36,7 @@ def resize(img: np.ndarray, scale_factor) -> np.ndarray:
 
 
 def draw_text_at(
-    img: np.ndarray,
+    imgNDArray,
     text: str,
     text_anchor: Tuple[int, int],
     text_color: Tuple[int, int, int] = (255, 255, 255),

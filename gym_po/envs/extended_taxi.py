@@ -7,6 +7,7 @@ from typing import Sequence, Callable, Tuple, Optional
 import cv2
 import gym
 import numpy as np
+from numpy.typing import NDArray
 from gym.utils.seeding import np_random
 from gym.vector.utils import batch_space
 
@@ -117,7 +118,7 @@ def str_map_to_img(map: np.ndarray, cell_pixel_size: int = CELL_PX, hansen_highl
 
 class TaxiVecEnv(gym.Env):
     """Vectorized Taxi environment"""
-    metadata = {"render.modes": ["human", "rgb_array", "rgb"], "video.frames_per_second": 5}
+    metadata = {"render_modes": ["human", "rgb_array", "rgb"], "render_fps": 5}
 
     ACTIONS_YX = np.array([[-1, 0], [1,0], [0,-1], [0,1], [0,0]], dtype=int)
     ACTION_NAMES = ['North', 'South', 'West', 'East', 'Pickup/Dropoff']
@@ -269,7 +270,7 @@ class TaxiVecEnv(gym.Env):
         """Fully reset some environments"""
         b = mask.sum()
         if b:
-            self.s[mask] = self.rng.multinomial(self.ns, self.state_distribution, b).argmax(-1)
+            self.s[mask] = self.np_random.multinomial(self.ns, self.state_distribution, b).argmax(-1)
             self.elapsed[mask] = 0
             self.n_dropoffs_completed[mask] = 0
 
@@ -278,10 +279,10 @@ class TaxiVecEnv(gym.Env):
         b = mask.sum()
         if b:
             if (r is None) or (c is None): r, c = self.decode(self.s[mask])[:-2]
-            p_idx = self.rng.randint(self.nlocs, size=b)  # Place passenger
-            d_idx = self.rng.randint(self.nlocs, size=b)  # Place destination
+            p_idx = self.np_random.randint(self.nlocs, size=b)  # Place passenger
+            d_idx = self.np_random.randint(self.nlocs, size=b)  # Place destination
             while (m := mask[mask] & (p_idx == d_idx)).any():
-                d_idx[m] = self.rng.randint(self.nlocs, size=m.sum())
+                d_idx[m] = self.np_random.randint(self.nlocs, size=m.sum())
             self.s[mask] = self.encode(r, c, p_idx, d_idx)  # Store in state
 
     def _obs(self):

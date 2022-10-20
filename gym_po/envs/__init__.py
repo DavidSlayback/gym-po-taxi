@@ -1,10 +1,7 @@
 from .car_flag import CarVecEnv, DiscreteActionCarVecEnv
 from .extended_taxi import TaxiVecEnv, HansenTaxiVecEnv, ExtendedHansenTaxiVecEnv, EXTENDED_TAXI_MAP, \
     ExtendedTaxiVecEnv, TAXI_MAP
-from .multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv, HansenMultistoryFourRoomsVecEnv, \
-    GridMultistoryFourRoomsVecEnv
-from .rooms.rooms import Rooms
-from .rooms.crooms import CRooms
+from .rooms import RoomsEnv, CRoomsEnv, MultistoryFourRoomsEnv
 
 from gymnasium.envs.registration import register
 
