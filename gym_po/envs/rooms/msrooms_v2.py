@@ -1,6 +1,7 @@
 from typing import Tuple, Sequence, Union, Callable, Optional
 
 import numpy as np
+from enum import Enum, IntEnum
 from numpy.typing import ArrayLike, NDArray
 from dotsi import DotsiDict
 import gymnasium
@@ -21,13 +22,13 @@ upstairs = NE = np.array([1, 11])
 downstairs = SW = np.array([11, 1])
 
 # Constant integers for each object
-GR_CNST = DotsiDict({
-    'wall': 0,
-    'goal': 1,
-    'stair_down': 2,
-    'stair_up': 3,
-})
-MAX_GR_CNST = len(GR_CNST) - 1
+class GR_CNST(IntEnum):
+    wall = 0
+    goal = 1
+    stair_down = 2
+    stair_up = 3
+MAX_GR_CNST = int(max(GR_CNST))
+
 # Constant colors, can be indexed by values above
 GR_CNST_COLORS = DotsiDict({
     'wall': COLORS.black,
@@ -39,46 +40,65 @@ GR_CNST_COLORS = DotsiDict({
 })
 
 
-# 13x13 FourRooms, upstairs and downstairs locations marked by "U" and "D"
+# 13x13 FourRooms, walls are 0, rooms are 1-4 (clockwise)
 FR_MAP = np.array(
     [
-        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
-        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
-        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
-        [-1, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, -1],
-        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
-        [-1, 3, 3, 3, 3, 3, -1, 0, 0, 0, 0, 0, -1],
-        [-1, -1, 2, -1, -1, -1, -1, 0, 0, 0, 0, 0, -1],
-        [-1, 2, 2, 2, 2, 2, -1, -1, -1, 0, -1, -1, -1],
-        [-1, 2, 2, 2, 2, 2, -1, 1, 1, 1, 1, 1, -1],
-        [-1, 2, 2, 2, 2, 2, -1, 1, 1, 1, 1, 1, -1],
-        [-1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, -1],
-        [-1, 2, 2, 2, 2, 2, -1, 1, 1, 1, 1, 1, -1],
-        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 4, 4, 4, 4, 4, 0, 1, 1, 1, 1, 1, 0],
+        [0, 4, 4, 4, 4, 4, 0, 1, 1, 1, 1, 1, 0],
+        [0, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 0],
+        [0, 4, 4, 4, 4, 4, 0, 1, 1, 1, 1, 1, 0],
+        [0, 4, 4, 4, 4, 4, 0, 1, 1, 1, 1, 1, 0],
+        [0, 0, 3, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0],
+        [0, 3, 3, 3, 3, 3, 0, 0, 0, 1, 0, 0, 0],
+        [0, 3, 3, 3, 3, 3, 0, 2, 2, 2, 2, 2, 0],
+        [0, 3, 3, 3, 3, 3, 0, 2, 2, 2, 2, 2, 0],
+        [0, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 0],
+        [0, 3, 3, 3, 3, 3, 0, 2, 2, 2, 2, 2, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ]
 )
+
 
 def rooms_map_to_multistory(map: NDArray[int] = FR_MAP, num_floors: int = 1) -> Tuple[NDArray[int], NDArray[int]]:
     """Convert numbered room map into multistory walking and room map
 
     Args:
-        map: Room map (e.g., FR_MAP)
-        num_floors: Number of floors
+        map: Room map (e.g., FR_MAP) [NxN]
+        num_floors: Number of floors [S]
 
     Returns:
-        walk_map: Multistory walking map
-        room_map: Multistory rooms map (room numbers increase based on floors)
+        walk_map: Multistory walking map with stairs [SxNxN]
+        room_map: Multistory rooms map (room numbers increase based on floors) [SxNxN]
     """
     walk_map = map.copy()
-    walk_map[map >= 0] = 0  # Alias the rooms for this layout
-    walk_map += 1  # Walls are 0s, everything else is 1
+    walk_map[map > 0] = 1  # Alias the rooms for this layout
     ms = np.stack([walk_map for _ in range(num_floors)], 0)
-    n_rooms = map.max()  # can work with different numbers of rooms
-    ms_rooms = np.stack([map[map >= 0] + i * n_rooms for i in range(num_floors)], 0)
+    n_rooms = map.max() - 1  # can work with different numbers of rooms
+    ms_rooms = np.stack([map[map > 0] + i * n_rooms for i in range(num_floors)], 0)
     if num_floors > 1:
         ms[1:, downstairs[0], downstairs[1]] = GR_CNST.stair_down
         ms[:-1, upstairs[0], upstairs[1]] = GR_CNST.stair_up
     return ms, ms_rooms
+
+
+def walk_map_to_state_map(walk_map: NDArray[int]) -> Tuple[NDArray[int], int]:
+    """Convert walk map (wall, goal, stairs) to state map (1 state per valid agent square)
+
+    Args:
+        walk_map: Multistory walking map with stairs [SxNxN]
+
+    Returns:
+        state_map: Coord to discrete state grid [SxNxN]
+        n_states: Number of unique agent state positions
+
+    """
+    state_map = walk_map[walk_map >= GR_CNST.wall].reshape(walk_map.shape)
+    n_states = state_map.max() - 1
+    return state_map, n_states
+
+
+
 
 
 def get_grid_obs(agent_zyx: np.ndarray, grid: np.ndarray, goal_zyx: np.ndarray, n: int = 3) -> np.ndarray:
@@ -104,11 +124,6 @@ def get_grid_obs(agent_zyx: np.ndarray, grid: np.ndarray, goal_zyx: np.ndarray, 
     return squares
 
 
-def layout_to_np(layout: str) -> np.ndarray:
-    """Convert layout string to numpy char array"""
-    return np.asarray([t.strip() for t in layout.splitlines()], dtype='c').astype('U')
-
-
 def np_to_grid(np_layout: np.ndarray) -> Tuple[np.ndarray, int]:
     """Convert numpy char array to state-abstracted integer grid, also return number of states"""
     state_aliases = np.unique(np_layout)
@@ -121,16 +136,17 @@ def np_to_grid(np_layout: np.ndarray) -> Tuple[np.ndarray, int]:
     return grid, len(state_alias_values)
 
 
-def generate_layout_and_img(map: str = BASE_FOURROOMS_MAP_WITH_STAIRS, grid_z: int = 1) -> Tuple[np.ndarray, np.ndarray]:
+def generate_layout_and_img(map: NDArray[int] = FR_MAP, grid_z: int = 1) -> Tuple[NDArray[int], NDArray[int]]:
     """Return full (z,y,x) map layout and unscaled (z,y,x,3) rgb image
 
     Args:
-        map: Raw string map
+        map: Base fourrooms map
         grid_z: Number of floors
     Returns:
         cnst_layout: (z,y,x) grid layout with room abstractions and stairs
         img_map (z,y,x,3) unscaled img
     """
+    walk_map, room_map = rooms_map_to_multistory(map, grid_z)
     state_map, n_states = np_to_grid(layout_to_np(map))  # Bordered map with state abstractions, no stairs
     cnst_layout = np.stack(tuple(state_map + (i * n_states) for i in range(grid_z)), axis=0)
     cnst_layout[:, state_map == GR_CNST.wall] = GR_CNST.wall
