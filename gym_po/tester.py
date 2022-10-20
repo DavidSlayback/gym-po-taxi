@@ -6,6 +6,7 @@ from envs import *
 from gym.wrappers.record_video import RecordVideo
 from envs.rooms.rooms import RoomsEnv
 from envs.rooms.crooms import CRoomsEnv
+from envs.extended_taxi import TaxiVecEnv
 from envs.rooms.msrooms import generate_layouts_and_img, MultistoryFourRoomsEnv
 # from envs.multistory_fourrooms_v3 import MultistoryFourRoomsVecEnv
 from envs.ant_tag import AntTagEnv
@@ -15,7 +16,8 @@ v = torch.ones(1, device='cuda')
 
 if __name__ == "__main__":
     # e = AntHeavenHellEnv(render_mode='human')
-    e = MultistoryFourRoomsEnv(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
+    e = TaxiVecEnv(16)
+    # e = MultistoryFourRoomsEnv(16, 3, obs_type='vector_goal_hansen', time_limit=10000)
     # env = envs.create_gym_env('walker2d', 20)
     # env = to_torch.JaxToTorchWrapper(env, device='cuda')
     # e = Rooms(16, '8b', obs_type='mdp', action_type='yx')
